@@ -1,0 +1,24 @@
+{
+  "version": "3.0.0",
+  "query": "Best way to semantically index a messy/decompiled codebase when variable names are not semantically useful",
+  "mode": "standard",
+  "started_at": "2026-06-22T03:37:24.063418+00:00",
+  "finished_at": "2026-06-22T03:38:07Z",
+  "assumptions": [
+    "The target corpus is messy/decompiled Roblox/Luau-like code where local variable names may be placeholders or missing.",
+    "The goal is retrieval quality for an MCP semantic-search tool, not perfect source reconstruction.",
+    "The preferred implementation should be local-first and incremental where possible."
+  ],
+  "provider_config": {
+    "primary": "web-search",
+    "scholarly": "arXiv, ACM/USENIX landing pages, project documentation"
+  },
+  "report_dir": "/research/GPT/Semantic_Indexing_Decompiled_Code_20260621",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "report.md"
+  },
+  "continuation": null
+}

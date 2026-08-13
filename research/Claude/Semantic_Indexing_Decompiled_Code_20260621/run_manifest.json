@@ -1,0 +1,22 @@
+{
+  "version": "3.0.0",
+  "query": "What is the best way to semantically index a messy codebase, especially decompiled code where variable/identifier names are not semantically meaningful; if no decompilation-specific techniques exist, fall back to general best strategies for semantically indexing a codebase.",
+  "mode": "deep",
+  "started_at": "2026-06-22T03:29:02.469879+00:00",
+  "finished_at": "2026-06-22T03:41:08Z",
+  "assumptions": [],
+  "provider_config": {
+    "primary": "search-cli",
+    "scholarly": null
+  },
+  "report_dir": "/research/Claude/Semantic_Indexing_Decompiled_Code_20260621",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "research_report_20260621_semantic_indexing_decompiled_code.md",
+    "html": "research_report_20260621_semantic_indexing_decompiled_code.html",
+    "pdf": "research_report_20260621_semantic_indexing_decompiled_code.pdf"
+  },
+  "continuation": null
+}

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Roblox MCP Installer</title>
+  <link rel="stylesheet" href="/installer.css">
+  <script src="/installer.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Roblox MCP installer">
+      <span class="brand-mark" aria-hidden="true">R</span>
+      <span>Roblox MCP</span>
+    </a>
+    <span class="header-title" id="headerTitle">Installer</span>
+    <div class="preview-label" id="modeLabel">
+      <span class="preview-dot" id="modeDot" aria-hidden="true"></span>
+      <span id="modeLabelText">Loading installer…</span>
+    </div>
+  </header>
+
+  <main class="installer-page">
+    <div class="screen is-active" data-screen="select">
+      <div class="screen-header">
+        <h1>Select Your AI Harness</h1>
+        <p>Choose where Roblox MCP should be available. Harnesses detected on this computer are selected automatically.</p>
+      </div>
+
+      <section class="harness-section">
+        <div class="section-header">
+          <label class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span class="sr-only">Search harnesses</span>
+            <input id="harnessSearch" type="search" placeholder="Search supported harnesses..." autocomplete="off">
+          </label>
+          <div class="section-tools">
+            <button class="section-manual" id="manualInstallButton" type="button">Manual install</button>
+            <div class="filter-tabs" role="group" aria-label="Harness filters">
+              <button class="is-active" type="button" data-filter="detected">Detected</button>
+              <button type="button" data-filter="all">All supported</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="loading-row" id="loadingState">
+          <span class="spinner" aria-hidden="true"></span>
+          Detecting installed harnesses…
+        </div>
+        <div class="harness-list" id="harnessList" aria-live="polite"></div>
+        <div class="empty-state" id="emptyState" hidden>
+          <strong>No matching harnesses</strong>
+          <span>Try showing all supported harnesses or clear your search.</span>
+        </div>
+      </section>
+    </div>
+
+    <div class="screen" data-screen="skill">
+      <div class="screen-header">
+        <h1>Install the Roblox MCP Skill</h1>
+        <p>Give supported agents current Roblox MCP function guidance and a place for project-specific bad practices.</p>
+      </div>
+
+      <section class="skill-section">
+        <label class="skill-choice skill-choice-toggle">
+          <span class="toggle-switch">
+            <input id="installSkillCheckbox" type="checkbox" checked>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </span>
+          <span class="skill-choice-copy">
+            <strong>Install Roblox MCP skill</strong>
+            <span>Give your selected AI harnesses project-aware Roblox MCP guidance.</span>
+          </span>
+        </label>
+        <div class="skill-explainer" id="skillExplainer">
+          <div class="skill-flow" aria-hidden="true">
+            <span class="skill-flow-icon">
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="10" width="18" height="11" rx="2"/>
+                <path d="M12 10V6M9 3h6M7 15h.01M17 15h.01M8 18h8"/>
+              </svg>
+            </span>
+            <span class="skill-flow-line"></span>
+            <span class="skill-flow-icon">
+              <svg viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6M9 13l-2 2 2 2M15 13l2 2-2 2M13 12l-2 6"/>
+              </svg>
+            </span>
+          </div>
+          <div class="skill-explainer-copy">
+            <div>
+              <strong>What it adds</strong>
+              <p>Current function and tool guidance, plus an editable reference for project-specific bad practices.</p>
+            </div>
+            <div>
+              <strong>Why install it</strong>
+              <p>Agents can choose the right Roblox MCP tools, avoid stale APIs, and follow your project conventions.</p>
+            </div>
+            <p class="skill-target-summary" id="skillTargetSummary">Loading compatible agents…</p>
+          </div>
+        </div>
+        <p class="readonly-note" data-preview-only hidden>Preview mode only. This page does not install the skill, update harness configuration, or restart an app.</p>
+      </section>
+    </div>
+
+    <div class="screen" data-screen="connector">
+      <div class="screen-header">
+        <h1>Install the Roblox Connector</h1>
+        <p>Place the loader in each detected auto-execute folder so Roblox reconnects to the MCP server automatically.</p>
+      </div>
+
+      <section class="harness-section connector-section">
+        <div class="connector-section-header">
+          <label class="connector-master-choice">
+            <span class="toggle-switch">
+              <input id="installConnectorCheckbox" type="checkbox" checked>
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </span>
+            <span>
+              <strong>Install connector automatically</strong>
+              <small>Existing connectors are backed up before the current loader is written.</small>
+            </span>
+          </label>
+          <span class="connector-selection-count" id="connectorSelectionCount"></span>
+        </div>
+        <div class="harness-list connector-targets" id="connectorTargets" aria-live="polite"></div>
+        <div class="empty-state connector-empty-state" id="connectorEmptyState" hidden>
+          <strong>No connector paths found</strong>
+          <span>No supported auto-execute folders were detected on this computer.</span>
+        </div>
+        <p class="readonly-note connector-note" id="connectorNote">Detecting supported auto-execute folders…</p>
+      </section>
+    </div>
+
+    <div class="screen" data-screen="service">
+      <div class="screen-header">
+        <h1>Keep Roblox MCP Available</h1>
+        <p>The recommended setup keeps one shared server available for every connected AI harness.</p>
+      </div>
+
+      <section class="service-section">
+        <div class="service-default-notice" id="serviceNotice" role="status">
+          <span class="service-notice-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3 2.8 19a1.4 1.4 0 0 0 1.2 2h16a1.4 1.4 0 0 0 1.2-2z"/>
+              <path d="M12 9v5M12 18h.01"/>
+            </svg>
+          </span>
+          <span class="service-notice-copy">
+            <strong id="serviceNoticeTitle">Roblox MCP will run in the background</strong>
+            <span id="serviceDescription">It starts when you sign in and stays available after the dashboard is closed.</span>
+          </span>
+        </div>
+
+        <button class="service-advanced-button" id="openServiceDialog" type="button">
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>
+            </svg>
+            Advanced options
+          </span>
+          <small id="serviceAdvancedSelection">Background · Recommended</small>
+        </button>
+        <p class="readonly-note" data-preview-only hidden>Preview mode only. Continue is disabled and no service, connector, skill, or harness configuration will be installed.</p>
+      </section>
+    </div>
+
+    <section class="installation-success" id="installationSuccess" aria-labelledby="installationSuccessTitle" hidden>
+      <div class="success-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="m6.5 12.5 3.2 3.2 7.8-8"/>
+        </svg>
+      </div>
+      <p class="success-kicker">Installation complete</p>
+      <h1 id="installationSuccessTitle" tabindex="-1">Successfully installed!</h1>
+      <p class="success-close-copy">You can now close this page.</p>
+      <p class="success-detail" id="installationSuccessDetail">Roblox MCP is ready.</p>
+    </section>
+  </main>
+
+  <div class="success-confetti" id="successConfetti" aria-hidden="true" hidden></div>
+
+  <footer class="installer-footer">
+    <div class="footer-inner">
+      <span class="selection-count" id="selectionCount">Loading harnesses…</span>
+      <ol class="steps" aria-label="Installation progress">
+        <li class="step is-active" data-step-indicator="select">
+          <button class="step-button" type="button">
+            <span class="step-number">1</span>
+            <strong>Select</strong>
+          </button>
+        </li>
+        <li class="step" data-step-indicator="skill">
+          <button class="step-button" type="button" disabled>
+            <span class="step-number">2</span>
+            <strong>Skill</strong>
+          </button>
+        </li>
+        <li class="step" data-step-indicator="connector">
+          <button class="step-button" type="button" disabled>
+            <span class="step-number">3</span>
+            <strong>Connector</strong>
+          </button>
+        </li>
+        <li class="step" data-step-indicator="service">
+          <button class="step-button" type="button" disabled>
+            <span class="step-number">4</span>
+            <strong>Server</strong>
+          </button>
+        </li>
+      </ol>
+      <div class="footer-actions">
+        <button class="button button-secondary" id="skipHarnessButton" type="button">Skip harness setup</button>
+        <button class="button button-secondary" id="backButton" type="button" hidden>Back</button>
+        <button class="button button-primary" id="continueButton" type="button" disabled>Continue</button>
+      </div>
+    </div>
+  </footer>
+
+  <div class="dialog-backdrop" id="manualInstallDialog" hidden>
+    <section class="restart-dialog manual-dialog" role="dialog" aria-modal="true" aria-labelledby="manualInstallDialogTitle">
+      <div class="dialog-header">
+        <h2 id="manualInstallDialogTitle">Manual install</h2>
+        <button class="dialog-close" id="closeManualInstallDialog" type="button" aria-label="Close manual install">×</button>
+      </div>
+      <p>Paste this into a client that is not listed, or if automatic install is unavailable.</p>
+      <div class="manual-recipe">
+        <div class="manual-recipe-head">
+          <span>mcpServers.json</span>
+          <button class="button button-ghost" id="copyManualInstallButton" type="button">Copy</button>
+        </div>
+        <pre class="manual-recipe-code" id="manualInstallRecipe"></pre>
+      </div>
+    </section>
+  </div>
+
+  <div class="dialog-backdrop" id="restartDialog" hidden>
+    <section class="restart-dialog" role="dialog" aria-modal="true" aria-labelledby="restartDialogTitle">
+      <div class="dialog-header">
+        <h2 id="restartDialogTitle">These require restarts</h2>
+        <button class="dialog-close" id="closeRestartDialog" type="button" aria-label="Close restart dialog">×</button>
+      </div>
+      <p>The following selected harnesses are currently open. Choose how they should be restarted after installation.</p>
+      <div class="restart-list" id="restartHarnesses"></div>
+      <p class="dialog-note" data-preview-only hidden>Preview mode only. Your choice is shown on the next step, but no app will be restarted.</p>
+      <div class="dialog-actions">
+        <button class="button button-secondary" id="manualRestartButton" type="button">Restart manually</button>
+        <button class="button button-primary" id="automaticRestartButton" type="button">Restart automatically</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="dialog-backdrop" id="serviceDialog" hidden>
+    <section class="restart-dialog service-dialog" role="dialog" aria-modal="true" aria-labelledby="serviceDialogTitle">
+      <div class="dialog-header">
+        <h2 id="serviceDialogTitle">Server startup options</h2>
+        <button class="dialog-close" id="closeServiceDialog" type="button" aria-label="Close server startup options">×</button>
+      </div>
+      <p>Choose when the shared Roblox MCP server should start. The background option is recommended for the most reliable connections.</p>
+      <div class="service-choice-grid">
+        <label class="service-choice">
+          <input type="radio" name="serviceMode" value="background" checked>
+          <span class="service-choice-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="6" rx="2"/>
+              <rect x="3" y="14" width="18" height="6" rx="2"/>
+              <path d="M7 7h.01M7 17h.01M17 7h1M17 17h1"/>
+            </svg>
+          </span>
+          <span class="service-choice-copy">
+            <strong>Run in the background <span class="recommended">Recommended</span></strong>
+            <span>Starts with your computer and stays ready for every harness.</span>
+            <small id="serviceManager">Native service</small>
+          </span>
+        </label>
+        <label class="service-choice">
+          <input type="radio" name="serviceMode" value="on-demand">
+          <span class="service-choice-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m13 2-9 12h8l-1 8 9-12h-8z"/>
+            </svg>
+          </span>
+          <span class="service-choice-copy">
+            <strong>Start when needed</strong>
+            <span>The first harness starts the server. Closing every harness allows it to stop.</span>
+            <small>On demand</small>
+          </span>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button class="button button-primary" id="doneServiceDialog" type="button">Done</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="dialog-backdrop" id="installDialog" hidden>
+    <section class="restart-dialog install-dialog" role="dialog" aria-modal="true" aria-labelledby="installDialogTitle">
+      <div class="dialog-header">
+        <h2 id="installDialogTitle">Installing Roblox MCP</h2>
+        <button class="dialog-close" id="closeInstallDialog" type="button" aria-label="Close installation status" hidden>×</button>
+      </div>
+      <div class="install-status">
+        <span class="install-status-icon" id="installStatusIcon" aria-hidden="true">
+          <span class="spinner"></span>
+        </span>
+        <div>
+          <strong id="installStatusTitle">Preparing the installation…</strong>
+          <p id="installStatusMessage">Keep this page open while Roblox MCP is configured.</p>
+        </div>
+      </div>
+      <ol class="install-progress" aria-label="Installation status">
+        <li data-install-step="server"><span></span>Server and harnesses</li>
+        <li data-install-step="skill"><span></span>Agent skill</li>
+        <li data-install-step="service"><span></span>Server startup</li>
+      </ol>
+      <pre class="install-console" id="installConsole" aria-label="Command output" aria-live="polite">Waiting for command output…</pre>
+      <div class="dialog-actions">
+        <button class="button button-primary" id="doneInstallDialog" type="button" hidden>Done</button>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

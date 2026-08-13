@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Makes a Great AI-Agent Skill? - Deep Research Report</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #1a1a1a;
+            background: #ffffff;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+        }
+
+        .header {
+            background: #003d5c;
+            color: white;
+            padding: 25px 40px;
+            border-bottom: 3px solid #002840;
+        }
+
+        .header h1 {
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .header-meta {
+            font-size: 13px;
+            color: #b8d4e6;
+            display: flex;
+            gap: 25px;
+        }
+
+        .metrics-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0;
+            border-bottom: 2px solid #003d5c;
+        }
+
+        .metric {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-right: 1px solid #d1d5db;
+            text-align: center;
+        }
+
+        .metric:last-child {
+            border-right: none;
+        }
+
+        .metric-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #003d5c;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #4a5568;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .content {
+            padding: 30px 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #003d5c;
+            margin: 32px 0 16px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #003d5c;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            line-height: 1.3;
+        }
+
+        .subsection-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin: 24px 0 12px 0;
+            line-height: 1.4;
+        }
+
+        .executive-summary {
+            background: #f8f9fa;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-left: 4px solid #003d5c;
+        }
+
+        .executive-summary p {
+            margin-bottom: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        p {
+            margin-bottom: 14px;
+            line-height: 1.7;
+            text-align: left;
+        }
+
+        /* Better paragraph spacing in content sections */
+        .content > p,
+        .section p {
+            margin-bottom: 16px;
+        }
+
+        .findings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .finding-card {
+            background: #f8f9fa;
+            padding: 18px;
+            border-left: 3px solid #003d5c;
+        }
+
+        .finding-card h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #003d5c;
+            margin-bottom: 10px;
+        }
+
+        .finding-card p {
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            background: #003d5c;
+            color: white;
+            padding: 10px 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        ul, ol {
+            margin: 16px 0 16px 28px;
+            padding-left: 0;
+        }
+
+        li {
+            margin-bottom: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+            padding-left: 8px;
+        }
+
+        /* Nested lists */
+        li ul, li ol {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* Better bullet/number spacing */
+        ol {
+            list-style-position: outside;
+            padding-left: 0;
+        }
+
+        ul {
+            list-style-position: outside;
+            padding-left: 0;
+        }
+
+        .key-insight {
+            background: white;
+            border: 1px solid #d1d5db;
+            border-left: 3px solid #003d5c;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .key-insight strong {
+            color: #003d5c;
+            font-weight: 600;
+        }
+
+        .citation {
+            color: #003d5c;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            position: relative;
+            padding: 2px 4px;
+            background: #f0f7fc;
+            border-radius: 2px;
+            transition: all 0.2s ease;
+        }
+
+        .citation:hover {
+            background: #003d5c;
+            color: white;
+        }
+
+        /* Attribution Gradients (2025 Enhancement) */
+        .citation-tooltip {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 8px;
+            background: white;
+            border: 2px solid #003d5c;
+            box-shadow: 0 4px 12px rgba(0, 61, 92, 0.15);
+            padding: 12px;
+            min-width: 300px;
+            max-width: 500px;
+            z-index: 1000;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .citation:hover .citation-tooltip {
+            display: block;
+        }
+
+        .tooltip-title {
+            font-weight: 700;
+            color: #003d5c;
+            margin-bottom: 8px;
+            font-size: 13px;
+            border-bottom: 1px solid #d1d5db;
+            padding-bottom: 6px;
+        }
+
+        .tooltip-source {
+            color: #4a5568;
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+
+        .tooltip-claim {
+            background: #f8f9fa;
+            padding: 8px;
+            margin-top: 8px;
+            border-left: 3px solid #003d5c;
+            font-size: 11px;
+        }
+
+        .tooltip-claim-label {
+            font-weight: 600;
+            color: #003d5c;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .evidence-chain {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #d1d5db;
+        }
+
+        .evidence-chain-label {
+            font-weight: 600;
+            color: #003d5c;
+            font-size: 11px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .evidence-step {
+            padding: 6px;
+            background: #f8f9fa;
+            margin-bottom: 4px;
+            font-size: 11px;
+            border-left: 2px solid #d1d5db;
+            padding-left: 8px;
+        }
+
+        .bibliography {
+            background: #f8f9fa;
+            padding: 30px;
+            margin-top: 40px;
+            border-left: 4px solid #003d5c;
+        }
+
+        .bibliography-content {
+            background: #f8f9fa;
+            padding: 20px 0;
+        }
+
+        .bib-entry {
+            margin-bottom: 18px;
+            padding-left: 50px;
+            text-indent: -50px;
+            line-height: 1.6;
+            font-size: 13px;
+        }
+
+        .bib-number {
+            color: #003d5c;
+            font-weight: 700;
+            margin-right: 8px;
+        }
+
+        .bib-entry a {
+            color: #003d5c;
+            word-wrap: break-word;
+            text-decoration: none;
+        }
+
+        .bib-entry a:hover {
+            text-decoration: underline;
+        }
+
+        .compact-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .compact-list li {
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .info-box {
+            background: white;
+            border: 1px solid #d1d5db;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .info-box h4 {
+            font-size: 13px;
+            font-weight: 700;
+            color: #003d5c;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .highlight-stat {
+            font-weight: 700;
+            color: #003d5c;
+        }
+
+        strong {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        @media print {
+            .container {
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .metrics-dashboard {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .findings-grid {
+                grid-template-columns: 1fr;
+            }
+            .compact-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    
+        @page { size: Letter; margin: 16mm 15mm 17mm 15mm; }
+        @media print {
+            body { font-size: 10pt; line-height: 1.45; }
+            .header { padding: 18px 24px; }
+            .header-meta { display: block; }
+            .header-meta span { margin-right: 12px; }
+            .metrics-dashboard { display: table; width: 100%; table-layout: fixed; }
+            .metric { display: table-cell; padding: 12px 8px; }
+            .content { padding: 18px 24px; }
+            .section-title, .subsection-title { break-after: avoid; page-break-after: avoid; }
+            p, li { orphans: 3; widows: 3; }
+            table, .metric, .key-insight, .info-box { break-inside: avoid; page-break-inside: avoid; }
+            .bibliography { break-before: page; page-break-before: always; }
+            a { color: #003d5c; text-decoration: none; }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>What Makes a Great AI-Agent Skill?</h1>
+            <div class="header-meta">
+                <span>2026-07-27</span>
+                <span>•</span>
+                <span>24 Sources</span>
+            </div>
+        </div>
+
+        <div class="metrics-dashboard">
+  <div class="metric"><span class="metric-number">24</span><span class="metric-label">Verified sources</span></div>
+  <div class="metric"><span class="metric-number">6</span><span class="metric-label">Major findings</span></div>
+  <div class="metric"><span class="metric-number">0</span><span class="metric-label">Unsupported factual claims</span></div>
+  <div class="metric"><span class="metric-number">8</span><span class="metric-label">Rubric dimensions</span></div>
+</div>
+
+        <div class="content">
+            <div class="section"><div class="executive-summary"><h2 class="section-title">Executive Summary</h2>
+
+<p>A great AI-agent skill is a compact, testable operating contract for one recognizable user goal. It is not simply a large prompt, a documentation dump, or a collection of tips. Its metadata makes it activate for the right requests and stay inactive for unrelated ones; its body tells the agent what inputs to inspect, which decisions to make, which actions to take, what not to infer, and what finished work looks like. OpenAI, Anthropic, and the open Agent Skills specification converge on this focused, progressively disclosed design <span class="citation">[1]</span>, <span class="citation">[3]</span>, <span class="citation">[4]</span>.
+</p>
+
+<p>The highest-leverage design rule is <strong>minimum sufficient intervention</strong>. Put only routing and always-needed procedure in <code>SKILL.md</code>; move detailed policies, examples, schemas, and templates into directly linked resources; add scripts only when deterministic computation, transformation, or validation materially improves reliability <span class="citation">[1]</span>, <span class="citation">[3]</span>, <span class="citation">[8]</span>, <span class="citation">[9]</span>. A good skill constrains the brittle parts of a workflow while leaving the model discretion where judgment is useful. It supplies a preferred path and explicit escape conditions instead of an exhaustive decision tree.
+</p>
+
+<p>Quality is demonstrated through behavior, not prose. A production-ready evaluation suite tests positive triggers, paraphrased triggers, negative triggers, incomplete inputs, task outcomes, error recovery, and coexistence with other skills. Because agent behavior varies across runs, representative cases need repeated trials and final-state grading rather than one successful transcript <span class="citation">[5]</span>, <span class="citation">[11]</span>, <span class="citation">[13]</span>, <span class="citation">[19]</span>. The skill should beat a no-skill baseline on the failures it was created to address.
+</p>
+
+<p>Security and maintenance are intrinsic quality dimensions. Skills can invoke code and tools, consume adversarial external content, and transmit data. A great skill declares dependencies, treats external text and tool metadata as untrusted, preserves user control for consequential actions, narrows permissions, records validation steps, and is versioned with a rollback path <span class="citation">[5]</span>, <span class="citation">[6]</span>, <span class="citation">[14]</span>, <span class="citation">[15]</span>, <span class="citation">[20]</span>, <span class="citation">[21]</span>.
+</p>
+
+<p><strong>Primary recommendation:</strong> build skills evaluation-first: define one recurring failure and its acceptance tests, write the smallest skill that fixes it, then promote only after trigger, outcome, robustness, security, and coexistence gates pass.
+</p>
+
+<p><strong>Confidence:</strong> High for the design principles, because the findings are consistent across current OpenAI and Anthropic documentation, the open specification, independent agent benchmarks, and government security research. Direct comparative studies of alternative <code>SKILL.md</code> designs remain limited.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Introduction</h2>
+
+<h3 class="subsection-title">Research question and scope</h3>
+
+<p>This report asks: <strong>what makes a great skill for an AI agent such as Codex?</strong> Here, a skill means a reusable filesystem-based package whose <code>SKILL.md</code> contains metadata and procedural guidance, with optional references, assets, scripts, and tool dependencies. The scope includes discovery, instruction architecture, tool use, evaluation, security, maintainability, and distribution. It excludes general human skill acquisition, model fine-tuning, and product-specific prompt tricks that do not transfer to reusable agent workflows.
+</p>
+
+<p>The analysis assumes a technical audience that may create personal, repository-scoped, or distributable skills. It treats OpenAI's current Codex guidance as authoritative for Codex behavior, the Agent Skills specification as the interoperability baseline, and Anthropic's documentation as a mature independent implementation of the same open format <span class="citation">[1]</span>, <span class="citation">[2]</span>, <span class="citation">[3]</span>, <span class="citation">[4]</span>. Academic agent research and security benchmarks are used to test whether vendor authoring guidance is consistent with observed model limitations <span class="citation">[9]</span>, <span class="citation">[12]</span>, <span class="citation">[13]</span>, <span class="citation">[17]</span>, <span class="citation">[20]</span>.
+</p>
+
+<h3 class="subsection-title">Methodology</h3>
+
+<p>Research used a standard-mode evidence loop: scope, retrieval, source registration, evidence capture, triangulation, outline refinement, synthesis, and claim verification. Twenty-four sources were registered. They comprise current official documentation from OpenAI, Anthropic, Agent Skills, and MCP; first-party engineering reports; peer-reviewed or archival research; and NIST security analysis. Every source has a stable identifier in <code>sources.jsonl</code>, and a short supporting passage or data point is preserved in <code>evidence.jsonl</code>.
+</p>
+
+<p>Major conclusions required support from at least three independently published sources or source clusters. Vendor claims about their own runtime behavior were not generalized without corroboration. Where evidence supports an engineering recommendation rather than a universal causal law, the report labels it as synthesis. The evidence changed the initial outline by elevating activation quality and coexistence to first-class concerns: enterprise guidance showed that a well-executed workflow can still be a bad skill if it steals unrelated triggers or degrades other installed skills <span class="citation">[5]</span>.
+</p>
+
+<h3 class="subsection-title">Key assumptions</h3>
+
+<p>The central assumption is that a skill's purpose is to improve repeatable task performance, not to maximize the amount of knowledge available to the model. A second assumption is that current agent hosts use progressive disclosure: metadata is visible for discovery, the main instructions load on activation, and supporting files load only as needed <span class="citation">[2]</span>, <span class="citation">[3]</span>. A third is that the deployed model, tools, permissions, and surrounding skills are part of the effective system; therefore, quality cannot be established by reading <code>SKILL.md</code> in isolation. Finally, the report assumes that consequential actions remain subject to the host's user-consent and sandbox policies rather than being authorized merely because a skill requests them <span class="citation">[14]</span>, <span class="citation">[21]</span>.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Main Analysis</h2>
+
+<h3 class="subsection-title">Finding 1: Start with a narrow task and an activation contract</h3>
+
+<p>The first mark of quality is fit. A skill should exist because a recurring, recognizable task improves when the agent receives specialized procedure, domain context, or deterministic helpers. OpenAI recommends keeping each skill focused on a recognizable user goal and splitting workflows when their triggers, inputs, or success criteria differ <span class="citation">[1]</span>. Anthropic's evaluation-first guidance similarly begins by observing representative tasks without a skill and documenting concrete capability gaps <span class="citation">[7]</span>. This leads to a practical threshold: if the intended behavior is a universal repository convention, it belongs in <code>AGENTS.md</code>; if it is a one-off constraint, it belongs in the prompt; if it needs live external capabilities, it may need MCP; a skill is the right surface when the value lies in a reusable workflow <span class="citation">[2]</span>.
+</p>
+
+<p>This distinction prevents two common failures. The first is the <strong>miscellaneous handbook</strong>: a skill named for a broad profession or file type that contains many loosely connected procedures. It is difficult to trigger accurately, expensive to load, and ambiguous about which branch governs a given request. The second is the <strong>micro-skill swarm</strong>: dozens of near-duplicate skills whose descriptions compete for the same requests. Enterprise guidance warns that a new skill can degrade the installed set by over-triggering or stealing matches from another skill <span class="citation">[5]</span>. The correct unit is therefore neither "everything about a domain" nor "one instruction per skill"; it is one user goal with a coherent input-output contract.
+</p>
+
+<p>The activation contract lives primarily in <code>name</code> and <code>description</code>. In Codex, metadata is available before the full skill body, and implicit activation depends on the task matching the description <span class="citation">[2]</span>. The open specification requires the description to state both what the skill does and when it should be used <span class="citation">[3]</span>. OpenAI adds that the body should hold detailed procedure, format, and safety rules, while the description should state the workflow and trigger conditions <span class="citation">[1]</span>. These mechanics make the description part of runtime behavior rather than marketing copy.
+</p>
+
+<p>A strong description has four properties. It names the outcome in user language, includes likely trigger terms, states the relevant artifact or environment, and draws a meaningful boundary. For example, "Create, edit, render, and visually verify <code>.docx</code> files; use for Word document requests where layout matters" is more operational than "Helps with documents." Negative scope is useful when nearby intents are easy to confuse: a live-Excel control skill should say that it is not for standalone <code>.xlsx</code> generation. However, exhaustive "do not use" lists can themselves dilute the key trigger. The highest-value use case and nouns should come first because hosts may shorten descriptions when many skills are installed <span class="citation">[2]</span>.
+</p>
+
+<p>Trigger quality is bidirectional. Under-specified descriptions miss relevant requests; over-broad descriptions activate on unrelated ones <span class="citation">[19]</span>. Evaluation must therefore measure both recall and precision. A minimum trigger set includes direct requests, natural paraphrases, requests that mention the artifact but ask only for advice, adjacent workflows that belong to another skill, and ambiguous cases that require clarification. For a robust estimate, each case should run multiple times because model outputs and routing decisions vary <span class="citation">[11]</span>, <span class="citation">[19]</span>. The target is not universal activation; it is high activation on intended work and reliable restraint elsewhere.
+</p>
+
+<p>The resulting design principle is <strong>one job, many realistic phrasings</strong>. A great skill is easy for a user to name, easy for a host to recognize, and easy for a maintainer to test. Its scope can be summarized without reading the body. If authors cannot write a precise activation description, the workflow boundary is probably not yet coherent enough to implement.
+</p>
+
+<h3 class="subsection-title">Finding 2: Progressive disclosure is the core information architecture</h3>
+
+<p>Skills are valuable partly because they can carry more knowledge than should be pasted into every prompt. That advantage disappears if the skill loads everything at once. The Agent Skills specification defines a three-level architecture: lightweight metadata at startup, the full <code>SKILL.md</code> after activation, and supporting resources only when required <span class="citation">[3]</span>. Codex follows the same pattern <span class="citation">[2]</span>. Anthropic describes context as a finite resource and advises finding the smallest high-signal set of tokens that produces the desired behavior <span class="citation">[8]</span>.
+</p>
+
+<p>This architecture is not only a cost optimization. Long-context research shows that more available text does not guarantee better use of that text. Liu et al. found that performance often fell when relevant information was placed in the middle of long contexts, including for explicitly long-context models <span class="citation">[9]</span>. In their multi-document task, adding retrieved documents produced diminishing returns even while retrieval recall continued to rise <span class="citation">[9]</span>. The direct implication for skill authors is conservative: do not assume that a model will reliably discover one critical rule buried in a long manual. Put always-applicable constraints close to the top-level workflow and route conditionally to focused references.
+</p>
+
+<p><code>SKILL.md</code> should therefore act as an index and control plane. It needs the activation-independent invariants, the main workflow, decision points, stop conditions, required validation, and direct links to optional material. Detailed API schemas, policy tables, format specifications, domain encyclopedias, and extended examples belong in <code>references/</code>. Templates and files to copy or transform belong in <code>assets/</code>. Deterministic computation and file-processing helpers belong in <code>scripts/</code> <span class="citation">[1]</span>, <span class="citation">[3]</span>, <span class="citation">[4]</span>. The main file should tell the agent exactly when to read or run each resource.
+</p>
+
+<p>Good routing is shallow. The open specification recommends direct relative references and warns against deeply nested chains <span class="citation">[3]</span>. Anthropic's authoring guide explains that agents may preview rather than fully read files discovered through nested references, which can leave the real instruction unseen <span class="citation">[4]</span>. Every essential reference should be reachable directly from <code>SKILL.md</code>, and long reference files should begin with a table of contents. File names should describe their role-<code>invoice_schema.md</code> and <code>validate_invoice.py</code> are better than <code>notes2.md</code> and <code>helper.py</code>.
+</p>
+
+<p>Progressive disclosure also supports variant control. Suppose a document skill can create, edit, redline, and visually review files. The top-level workflow can first classify the operation, then route creation to one guide and redlining to another. The model loads only the branch relevant to the task. This reduces conflicting instructions and makes each branch independently testable. Conditional routing is preferable to presenting five equivalent libraries or techniques and asking the model to choose from scratch. A documented default with an escape condition reduces variance without eliminating useful judgment <span class="citation">[4]</span>.
+</p>
+
+<p>The quality test is whether every loaded token earns its place. Information belongs in <code>SKILL.md</code> when omitting it would predictably harm most invocations. It belongs in a reference when it is necessary only for a class of tasks. It belongs outside the skill when the base model already knows it, it changes too frequently to maintain safely, or it can be obtained from an authoritative live tool. This produces a skill that is concise at the point of action yet deep when the task actually needs depth.
+</p>
+
+<h3 class="subsection-title">Finding 3: Specify the brittle decisions, not every thought</h3>
+
+<p>A useful skill turns intent into an executable workflow. OpenAI's authoring guidance says the instructions should identify expected inputs, required steps, the user-visible output, facts the model must not infer, conditions for asking, stopping, or declining, and supporting files to consult <span class="citation">[1]</span>. Tool-integrated workflows also need unambiguous input and output contracts; Anthropic recommends enforcing those contracts with strict data models where possible <span class="citation">[23]</span>. These elements define observable behavior without prescribing hidden reasoning.
+</p>
+
+<p>The central design choice is the <strong>degree of freedom</strong>. Too little structure leaves the agent to rediscover a fragile procedure every time. Too much structure creates a brittle flowchart that cannot adapt when files, tools, or user intent differ from the author's examples. Strong skills are rigid around safety, irreversible state changes, data contracts, and acceptance criteria; moderately prescriptive around tool sequence and preferred libraries; and flexible around search tactics, code organization, or prose where multiple answers can be valid. This autonomy gradient is more useful than a blanket instruction to "follow these steps exactly."
+</p>
+
+<p>Imperative, outcome-linked steps are easier to execute than abstract principles. "Render every page to PNG and inspect it before delivery" defines an action and gate. "Ensure high quality" does not. "If the workbook is an active Excel session, use live-control; otherwise create a standalone file" defines a branch. "Use the best spreadsheet approach" pushes the routing problem back to the model. A procedural skill should expose the few decisions that materially change the workflow and state the evidence required at each gate.
+</p>
+
+<p>The workflow should include feedback loops where defects are visible only after execution. Code should be tested, documents rendered, generated data parsed, citations verified, and deployment state inspected. Research on ReAct supports the general pattern of interleaving action with observations so plans can be updated and exceptions handled <span class="citation">[24]</span>. AgentBench likewise identifies long-horizon reasoning, decision-making, and instruction following as obstacles to usable agents <span class="citation">[12]</span>. A skill can compensate by breaking work into milestones that generate concrete observations instead of relying on a long unverified plan.
+</p>
+
+<p>Examples are most valuable when format or judgment is hard to state compactly. A small set of representative input-output pairs can establish tone, granularity, naming conventions, or error handling more efficiently than pages of adjectives <span class="citation">[4]</span>. Examples should cover the normal path and one or two discriminating edges, not merely repeat the instructions. They should use realistic data while avoiding secrets, unstable endpoints, or organization-specific facts that will silently expire.
+</p>
+
+<p>Stop conditions are equally important. A great skill says when missing information is genuinely blocking, when a safe default is acceptable, when a retry is justified, and when user approval is required. This prevents two opposite failure modes: unnecessary questioning that stalls routine work and unauthorized assumptions that alter scope or external state. For consequential workflows, the skill should preserve a clear handoff to the user; OpenAI's agent guide treats human intervention as a critical safeguard, particularly while failures and edge cases are still being discovered <span class="citation">[18]</span>.
+</p>
+
+<p>The best instruction body thus resembles a good runbook: short enough to scan, precise at failure-prone boundaries, explicit about artifacts and gates, and adaptable between them. Its purpose is not to narrate everything a capable model already knows. It is to transfer the local procedure, risk judgment, and definition of done that the model would otherwise lack.
+</p>
+
+<h3 class="subsection-title">Finding 4: Use scripts and tools only where they buy determinism</h3>
+
+<p>Optional code can turn a skill from advice into a reliable capability, but code is not automatically an upgrade. OpenAI recommends instructions by default and scripts when deterministic computation or file processing is needed; it explicitly warns against adding a script when existing tools and instructions already solve the task reliably <span class="citation">[1]</span>. Anthropic similarly recommends pre-made utilities because they can save context and time while improving repeatability, but requires explicit dependencies, error handling, and clear execution intent <span class="citation">[4]</span>.
+</p>
+
+<p>The strongest candidates for scripts are operations with a narrow contract and an objectively checkable result: parsing a fixed format, validating a schema, rendering an artifact, transforming files, computing a checksum, or running a standardized test. These are places where generated one-off code adds variance without adding useful judgment. A script should accept explicit inputs, produce a documented output, return meaningful exit codes, avoid hidden global state, and provide errors that tell the agent what can be corrected. If it modifies data, it should support a dry run or operate on a recoverable copy when practical.
+</p>
+
+<p>The skill must distinguish <strong>execute</strong> from <strong>read</strong>. If a helper is an implementation detail, instruct the agent to run it with the exact command and arguments. If the source code contains logic the agent must understand or adapt, label it as a reference. Ambiguity can lead the model to load a large program into context instead of using it, or to execute code whose behavior should have been inspected first. The same principle applies to MCP tools: declaring a dependency makes a capability available, but the skill still needs to say which tool to use, in what sequence, and how to treat missing or ambiguous results <span class="citation">[1]</span>.
+</p>
+
+<p>Tool descriptions and schemas form part of the agent-computer interface. Anthropic's broader agent guidance emphasizes simple designs, transparent workflows, and carefully documented, tested tools <span class="citation">[10]</span>. Its tool-authoring guidance recommends clear input and output definitions with strict schemas <span class="citation">[23]</span>. A skill should therefore avoid vague tool references such as "look up the customer." It should name the authoritative tool, required identifiers, expected response fields, pagination behavior, and fallback when the tool returns no match. Live data and authorization belong in the server; reusable sequencing and output rules belong in the skill <span class="citation">[1]</span>.
+</p>
+
+<p>Scripts also create a maintenance and security burden. Dependencies can disappear, platform assumptions can fail, and code can access more of the environment than the prose suggests. The skill should list prerequisites, prefer bundled or workspace-provided runtimes, use portable paths, pin critical behavior where reproducibility matters, and include a small smoke test. Reviewers need to inspect all bundled files, not just <code>SKILL.md</code>, because a harmless description can conceal broad filesystem or network behavior <span class="citation">[5]</span>, <span class="citation">[6]</span>.
+</p>
+
+<p>The decision rule is simple: add code when it converts a probabilistic subtask into a stable interface with a measurable benefit. Keep judgment in the model and mechanics in deterministic helpers. If the script cannot be tested independently, cannot explain failure, or merely regenerates code the model could already write safely, it is increasing the skill's attack surface and maintenance cost without establishing quality.
+</p>
+
+<h3 class="subsection-title">Finding 5: Evaluation-not author confidence-establishes quality</h3>
+
+<p>Skill development should begin with a failure that can be reproduced. Anthropic's skill guidance recommends running representative tasks without the skill, recording capability gaps, building evaluations, establishing a baseline, and then writing the minimum instructions needed to improve results <span class="citation">[4]</span>, <span class="citation">[7]</span>. This reverses the common sequence of writing an encyclopedic manual and testing it afterward. It also creates a falsifiable reason for every instruction: removing or changing it should affect an observed behavior or quality metric.
+</p>
+
+<p>A complete suite tests five layers. <strong>Activation tests</strong> measure whether direct and paraphrased intents trigger the skill and unrelated intents do not. <strong>Procedure tests</strong> inspect whether the agent consults required files, uses the intended tools, respects stop conditions, and performs validation. <strong>Outcome tests</strong> grade the final artifact or environment state. <strong>Robustness tests</strong> vary input size, missing data, tool errors, and realistic edge cases. <strong>Coexistence tests</strong> run the skill alongside the installed set to detect trigger theft, contradictory instructions, or performance regressions <span class="citation">[5]</span>. A skill that passes only when invoked explicitly has not demonstrated implicit discoverability; a skill that activates correctly but produces a broken artifact has not demonstrated task quality.
+</p>
+
+<p>Final-state grading matters because transcripts can be persuasive while outcomes are wrong. Anthropic's evaluation framework distinguishes the trace from the environment's final state: an agent can claim that a reservation exists even when no database record was created <span class="citation">[11]</span>. For coding, unit tests and repository diffs are natural graders. For documents, render-and-inspect checks catch layout defects that text extraction misses. For research, groundedness, source quality, coverage, and citation integrity require separate graders. Human or model grading can assess open-ended quality, but deterministic checks should cover every property that can be measured directly.
+</p>
+
+<p>Repeated trials are necessary. Agent outputs vary, so one green run overstates reliability <span class="citation">[11]</span>. The Agent Skills description guide suggests multiple runs when measuring trigger behavior <span class="citation">[19]</span>. The <code>tau-bench</code> benchmark formalizes consistency with pass-at-k-style evaluation and reported that then-current function-calling agents succeeded on fewer than half of tasks, with much lower reliability across repeated trials in one domain <span class="citation">[13]</span>. Although benchmark results age quickly, the methodological point remains: report distributions or pass rates, not a curated success.
+</p>
+
+<p>Representative cases matter more than raw test count. AgentBench spans eight interactive environments because multi-turn reasoning and action differ from static text generation <span class="citation">[12]</span>. For a narrow skill, a smaller matrix can be sufficient if it covers distinct risks. A practical starting suite contains three to five positive triggers, three negative or adjacent triggers, two incomplete inputs, three core task cases, two edge or failure cases, and one coexistence run. High-risk skills add adversarial inputs, permission failures, and rollback checks. Each case needs explicit acceptance criteria that a second reviewer could apply consistently.
+</p>
+
+<p>Metrics should map to failure modes:
+</p>
+
+<table class="data-table">
+<thead><tr>
+<th>Dimension</th>
+<th>Suggested measure</th>
+<th>Typical failure</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Trigger precision</td>
+<td>correct non-activation / negative cases</td>
+<td>skill steals unrelated work</td>
+</tr>
+<tr>
+<td>Trigger recall</td>
+<td>correct activation / intended cases</td>
+<td>skill is never discovered</td>
+</tr>
+<tr>
+<td>Procedure adherence</td>
+<td>required gates completed</td>
+<td>validation or approval skipped</td>
+</tr>
+<tr>
+<td>Outcome correctness</td>
+<td>artifact or final state passes checks</td>
+<td>convincing but wrong completion</td>
+</tr>
+<tr>
+<td>Reliability</td>
+<td>pass rate across repeated trials</td>
+<td>intermittent success</td>
+</tr>
+<tr>
+<td>Efficiency</td>
+<td>context, tool calls, elapsed time</td>
+<td>correct but wasteful workflow</td>
+</tr>
+<tr>
+<td>Coexistence</td>
+<td>delta after installing with other skills</td>
+<td>routing or instruction conflict</td>
+</tr>
+<tr>
+<td>Safety</td>
+<td>violations across adversarial cases</td>
+<td>unauthorized action or disclosure</td>
+</tr>
+</tbody></table>
+
+<p>Evaluation should continue after release. Model versions, tools, dependencies, and neighboring skills change. Enterprise guidance recommends rerunning the full suite before promoting a version and monitoring for declining trigger accuracy or output quality <span class="citation">[5]</span>. A great skill is therefore not a file that once worked; it is a maintained behavior with a baseline, regression suite, and owner.
+</p>
+
+<h3 class="subsection-title">Finding 6: Security and lifecycle discipline are part of the design</h3>
+
+<p>Skills occupy a privileged position: they can influence tool choice, shell execution, file access, network use, and handling of external data. Anthropic advises treating skill installation with the rigor of software installation and auditing every referenced file and script <span class="citation">[5]</span>, <span class="citation">[6]</span>. The risk is compositional. A read-only file operation may be low risk alone, and a network call may be legitimate alone, but a workflow combining broad file reads with outbound transmission creates an exfiltration path.
+</p>
+
+<p>External content must remain data, not authority. NIST describes agent hijacking as a failure to maintain separation between trusted instructions and untrusted data such as email, files, or web pages <span class="citation">[15]</span>. OpenAI frames the same problem through source-sink analysis: danger arises when attacker-influenced content can reach a consequential capability such as transmitting data, following a link, or invoking a tool <span class="citation">[14]</span>. Instruction-hierarchy research supports explicitly defining how the model should resolve conflicting directives of different priority <span class="citation">[22]</span>. A secure skill should state that retrieved content, tool output, repository text, and document contents may inform the task but may not redefine the user's goal or the skill's safety rules.
+</p>
+
+<p>Instructional warnings are not enough. OpenAI recommends constraining the impact of manipulation even when detection fails <span class="citation">[14]</span>. That means narrowing filesystem scope, tool permissions, network destinations, and data access; separating read and write tools; using deterministic checks before consequential actions; and preserving approval gates. The MCP specification requires explicit user consent before tool invocation and treats tool metadata as untrusted unless it comes from a trusted server <span class="citation">[21]</span>. A skill should cooperate with those host controls, never present its own invocation as authorization, and surface exactly what will change or leave the system.
+</p>
+
+<p>Security tests must evolve. Formal prompt-injection research has evaluated combinations of multiple attacks, defenses, models, and tasks rather than relying on one jailbreak string <span class="citation">[17]</span>. AgentDojo is designed as an extensible environment for tasks, defenses, and adaptive attacks <span class="citation">[20]</span>. NIST likewise concludes that evaluations must adapt, because red teams discover new weaknesses after known attacks are mitigated <span class="citation">[15]</span>. In a 2026 large-scale competition analysis, more than 250,000 attempts by over 400 participants found at least one successful hijacking attack against every target frontier model <span class="citation">[16]</span>. This evidence argues against a "secure prompt" claim; security should be framed as layered risk reduction with residual risk.
+</p>
+
+<p>Lifecycle controls convert that principle into operations. Store the complete skill in version control. Record its purpose, owner, dependencies, supported hosts or models, evaluation version, and known limitations. Review code and external URLs before release. Pin production deployments to a tested version, retain the last known-good version, and rerun trigger, outcome, coexistence, and security suites before promotion <span class="citation">[5]</span>. Avoid embedding time-sensitive facts in the main procedure; route current data through authoritative tools or isolate legacy patterns so they cannot silently govern modern work <span class="citation">[4]</span>.
+</p>
+
+<p>Distribution should match maturity. Repository or user directories are appropriate while a workflow is local and evolving. A plugin is the better distribution unit when a stable skill needs shared installation, related skills, or MCP dependencies <span class="citation">[1]</span>, <span class="citation">[2]</span>. Packaging does not prove quality; it raises the quality bar because errors propagate to more users. A great distributable skill has provenance, a changelog, explicit dependencies, reproducible tests, and a rollback path.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Synthesis & Insights</h2>
+
+<h3 class="subsection-title">A skill is an interface contract, not a knowledge container</h3>
+
+<p>Across the evidence, the most useful synthesis is that a skill behaves like an interface between four parties: the user's intent, the model's judgment, the host's capabilities and controls, and the artifact or system being changed. Metadata is the routing interface. <code>SKILL.md</code> is the procedural interface. Schemas and tool descriptions are the machine interface. Acceptance tests are the outcome interface. Most weak skills leave one of these implicit.
+</p>
+
+<p>This framing explains why writing quality alone is insufficient. A beautifully written body cannot compensate for a description that activates on the wrong tasks. A correct workflow cannot compensate for a missing dependency. A successful transcript cannot compensate for a broken final state. A secure host cannot compensate for a script that reads unrelated secrets and sends them to an arbitrary endpoint. Greatness is the product of the interfaces working together, not the maximum score on any single dimension.
+</p>
+
+<h3 class="subsection-title">The governing principle is minimum sufficient intervention</h3>
+
+<p>The evidence supports a "minimum sufficient intervention" rule. Begin with the base model and available tools. Observe a recurring failure. Add the smallest instruction, reference, example, or deterministic helper that makes the failure reliably disappear. Retain that addition only if the evaluation improvement exceeds its context, complexity, and maintenance cost. This is consistent with evaluation-first skill development, context economy, and the broader advice to add agentic complexity only when it demonstrably improves outcomes <span class="citation">[7]</span>, <span class="citation">[8]</span>, <span class="citation">[10]</span>.
+</p>
+
+<p>This principle yields an escalation ladder:
+</p>
+
+<ol>
+<li>Clarify the activation description.</li>
+<li>Add one explicit invariant or decision boundary.</li>
+<li>Add a concrete example for a hard-to-describe output.</li>
+<li>Add a focused reference for conditional depth.</li>
+<li>Add a validation or feedback step.</li>
+<li>Add a script for deterministic mechanics.</li>
+<li>Add MCP only for live data, authorization, or controlled external actions.</li>
+<li>Package as a plugin only when distribution and dependency management justify it.</li>
+</ol>
+
+<p>Each rung should solve an observed problem. Skipping directly to scripts, connectors, or large reference libraries often creates a more impressive package without producing a more reliable skill.
+</p>
+
+<h3 class="subsection-title">Great skills compress organizational experience</h3>
+
+<p>The durable value of a skill is not generic domain knowledge. Models already possess broad knowledge, and current facts can often be retrieved. The scarce information is the organization's procedure: which source is authoritative, which ambiguity changes the workflow, which validation caught past failures, which action requires approval, and what a reviewer considers complete. A skill is excellent when it compresses that experience into a workflow that another agent instance can execute and verify.
+</p>
+
+<p>This also suggests a maintenance strategy. Do not append every correction. Classify feedback. Repeated routing errors update the description. Repeated procedural errors update the main workflow. Rare domain details become references. Mechanical failures become scripts or validators. Universal repository conventions move to <code>AGENTS.md</code>. Expired facts are deleted or fetched live. This keeps the skill small while its reliability improves.
+</p>
+
+<h3 class="subsection-title">A practical quality rubric</h3>
+
+<p>The following 100-point rubric translates the findings into a release gate:
+</p>
+
+<table class="data-table">
+<thead><tr>
+<th>Dimension</th>
+<th>Weight</th>
+<th>Full-credit standard</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Task fit and scope</td>
+<td>15</td>
+<td>one recognizable goal; correct surface; explicit non-goals</td>
+</tr>
+<tr>
+<td>Trigger quality</td>
+<td>15</td>
+<td>precise description; positive, paraphrase, negative, and ambiguous cases pass</td>
+</tr>
+<tr>
+<td>Context architecture</td>
+<td>10</td>
+<td>concise main file; direct routing; no buried critical rules</td>
+</tr>
+<tr>
+<td>Workflow clarity</td>
+<td>15</td>
+<td>inputs, outputs, decisions, stop conditions, and definition of done are explicit</td>
+</tr>
+<tr>
+<td>Execution reliability</td>
+<td>10</td>
+<td>deterministic helpers where justified; dependencies and errors handled</td>
+</tr>
+<tr>
+<td>Verification</td>
+<td>15</td>
+<td>final-state checks, repeated trials, baseline comparison, regression suite</td>
+</tr>
+<tr>
+<td>Safety and user control</td>
+<td>10</td>
+<td>trust boundaries, least privilege, approvals, and adversarial tests</td>
+</tr>
+<tr>
+<td>Maintainability</td>
+<td>10</td>
+<td>owner, versioning, provenance, coexistence tests, rollback, current references</td>
+</tr>
+</tbody></table>
+
+<p>A score is useful only if backed by evidence. A skill should not receive more than half credit in verification without recorded runs, or more than half credit in trigger quality without negative cases. Any unresolved critical security violation is a release blocker regardless of total score. For production use, a reasonable promotion threshold is 80/100 with no zero-score dimension; high-risk workflows should require independent review and explicit safety gates.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Limitations & Caveats</h2>
+
+<h3 class="subsection-title">Counterevidence Register</h3>
+
+<p>The source base is strong on convergent guidance but weaker on controlled comparisons of alternative skill designs. OpenAI and Anthropic document how their systems are intended to work and report lessons from internal use, but public experiments that isolate one <code>SKILL.md</code> variable at a time are scarce. The 100-point rubric is therefore a synthesis for engineering use, not a validated psychometric scale.
+</p>
+
+<p>Model and host behavior changes. Trigger routing, context limits, skill metadata, permissions, and plugin packaging may evolve after this report. Some guidance is implementation-specific: for example, Codex's discovery locations and metadata budgets should not be assumed to apply to every Agent Skills host <span class="citation">[2]</span>. The open specification establishes a portable minimum, while optional metadata and tool policies may have different support across clients <span class="citation">[3]</span>.
+</p>
+
+<p>Long-context findings provide a reason to prefer focused information architecture, but the cited experiments include older models and tasks that are not identical to skill execution <span class="citation">[9]</span>. They do not prove that every longer skill performs worse. The defensible conclusion is narrower: additional context has an opportunity cost, critical rules should not be buried, and skill length should be tested rather than presumed harmless.
+</p>
+
+<p>Agent benchmarks also age quickly. The specific success rates in <code>tau-bench</code> describe the evaluated systems and time, not current frontier performance <span class="citation">[13]</span>. Their lasting contribution is methodological: evaluate dynamic tool use, domain rules, final state, and consistency across trials. Likewise, security research demonstrates residual vulnerability and the need for layered controls; it does not establish that every skill consuming external content will be compromised <span class="citation">[14]</span>, <span class="citation">[16]</span>, <span class="citation">[20]</span>.
+</p>
+
+<p>No sources supported a universal optimal line count, number of examples, or evaluation-suite size across all skills. The specification's recommended limits and authoring checklists are sensible defaults, not substitutes for measured behavior. High-risk or unusually broad workflows may need more tests, independent security review, and stricter permission boundaries than this general rubric describes.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Recommendations</h2>
+
+<h3 class="subsection-title">Build evaluation-first</h3>
+
+<p>Write three representative task cases before extensive instructions: one normal case, one difficult edge, and one case that currently fails. Record the no-skill baseline. Add the minimum procedure necessary to pass, then expand only when a new observed failure justifies it <span class="citation">[4]</span>, <span class="citation">[7]</span>, <span class="citation">[11]</span>. Define success in terms of the final artifact or environment state, not whether the transcript sounds correct.
+</p>
+
+<h3 class="subsection-title">Treat the description as a classifier</h3>
+
+<p>Draft the description from actual user phrasing. State the outcome, artifact or environment, and trigger condition in the first sentence. Add a boundary only for a likely adjacent confusion. Test direct requests, paraphrases, negative cases, and ambiguous cases multiple times <span class="citation">[1]</span>, <span class="citation">[5]</span>, <span class="citation">[19]</span>. If two skills compete for the same cases, narrow or consolidate them before adding more trigger prose.
+</p>
+
+<h3 class="subsection-title">Design <code>SKILL.md</code> as a shallow router</h3>
+
+<p>Keep the main file focused on invariants, the primary workflow, decision points, stop conditions, validation, and direct resource links. Move conditional depth into focused references one level away. Put templates in assets and mechanics in scripts <span class="citation">[1]</span>, <span class="citation">[3]</span>, <span class="citation">[4]</span>. Review every paragraph with a simple question: would most invocations fail or become materially worse without this in immediate context?
+</p>
+
+<h3 class="subsection-title">Encode an autonomy gradient</h3>
+
+<p>Use strict rules for permissions, irreversible changes, data contracts, and acceptance gates. Provide preferred defaults for tools and common paths, with explicit escape conditions. Leave the model discretion for exploratory tactics and qualitative judgment. State what the agent must not infer and when it must ask, stop, retry, or hand control to the user <span class="citation">[1]</span>, <span class="citation">[18]</span>.
+</p>
+
+<h3 class="subsection-title">Make every critical operation verifiable</h3>
+
+<p>Pair generation with a checker: run tests for code, render visual artifacts, parse structured outputs, compare final state, or validate citations. Use deterministic scripts when they remove mechanical variance, but document dependencies, inputs, outputs, exit behavior, and error recovery <span class="citation">[1]</span>, <span class="citation">[4]</span>, <span class="citation">[10]</span>, <span class="citation">[23]</span>. A helper that cannot be independently tested should not become a hidden foundation of the workflow.
+</p>
+
+<h3 class="subsection-title">Release through explicit gates</h3>
+
+<p>Before promotion, require:
+</p>
+
+<ul>
+<li>trigger precision and recall cases;</li>
+<li>task outcome and final-state checks;</li>
+<li>repeated trials for nondeterministic behavior;</li>
+<li>edge, failure-recovery, and coexistence cases;</li>
+<li>review of every file, dependency, command, URL, and requested permission;</li>
+<li>adversarial tests for untrusted external content;</li>
+<li>an owner, version, changelog, known limitations, and rollback path.</li>
+</ul>
+
+<p>Treat a critical safety failure as blocking even when the overall quality score is high <span class="citation">[5]</span>, <span class="citation">[14]</span>, <span class="citation">[15]</span>, <span class="citation">[20]</span>, <span class="citation">[21]</span>. Rerun the suite when the skill, model, tools, dependencies, or neighboring skill set changes.
+</p>
+
+<h3 class="subsection-title">Use the right distribution surface</h3>
+
+<p>Keep an evolving personal workflow in a user skill and a project-specific workflow in the repository. Move universal repository conventions to <code>AGENTS.md</code>. Package a stable capability as a plugin when it needs team distribution, multiple related skills, or MCP dependencies <span class="citation">[1]</span>, <span class="citation">[2]</span>. Installation scope should follow the smallest audience that needs the behavior.
+</p>
+
+</div>
+<div class="section"><h2 class="section-title">Methodology Appendix</h2>
+
+<h3 class="subsection-title">Research process</h3>
+
+<p>The run began on 2026-07-27 in standard mode. The question was decomposed into discovery, context design, procedural guidance, deterministic execution, evaluation, security, and lifecycle management. Searches prioritized official OpenAI documentation for Codex behavior, official Agent Skills and Anthropic material for cross-implementation design, original academic papers for model and benchmark evidence, and NIST for independent security analysis.
+</p>
+
+<p>Sources were registered before synthesis using stable identifiers derived from canonical URLs or arXiv IDs. A compact evidence passage or data point from each source was stored in an append-only ledger with a locator and retrieval query. The final source set contains 24 entries spanning five source types: official documentation and standards, first-party engineering, peer-reviewed or archival research, government research, and protocol specifications.
+</p>
+
+<h3 class="subsection-title">Triangulation and outline refinement</h3>
+
+<p>The initial outline emphasized instruction writing, resources, and tests. Triangulation added two major concerns. First, OpenAI and Anthropic guidance showed that the description controls implicit discovery, while enterprise guidance identified over-triggering and coexistence as independent failure modes <span class="citation">[1]</span>, <span class="citation">[5]</span>, <span class="citation">[19]</span>. Second, security sources showed that skill quality must include trust boundaries, permissions, and adversarial testing rather than treating security as a deployment afterthought <span class="citation">[14]</span>, <span class="citation">[15]</span>, <span class="citation">[20]</span>, <span class="citation">[21]</span>.
+</p>
+
+<p>Major findings were retained only when at least three source clusters supported the conclusion or when a source authoritatively documented its own runtime behavior and independent evidence supported the engineering implication. Specific benchmark results were treated as time-bound. Recommendations and the quality rubric are explicitly synthetic: they integrate the evidence but are not quoted standards.
+</p>
+
+<h3 class="subsection-title">Claims-Evidence Table</h3>
+
+<table class="data-table">
+<thead><tr>
+<th>Atomic conclusion</th>
+<th>Independent support clusters</th>
+<th>Status</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Descriptions govern discovery and require narrow boundaries</td>
+<td>OpenAI runtime guidance <span class="citation">[1]</span>, <span class="citation">[2]</span>; Agent Skills guide <span class="citation">[19]</span>; Anthropic enterprise evaluation <span class="citation">[5]</span></td>
+<td>Supported</td>
+</tr>
+<tr>
+<td>Progressive disclosure improves context architecture</td>
+<td>Open specification <span class="citation">[3]</span>; Codex documentation <span class="citation">[2]</span>; context research <span class="citation">[8]</span>, <span class="citation">[9]</span></td>
+<td>Supported</td>
+</tr>
+<tr>
+<td>Workflows need explicit interfaces and feedback</td>
+<td>OpenAI workflow guidance <span class="citation">[1]</span>; tool-interface guidance <span class="citation">[23]</span>; ReAct <span class="citation">[24]</span>; AgentBench <span class="citation">[12]</span></td>
+<td>Supported</td>
+</tr>
+<tr>
+<td>Deterministic helpers are justified by measured reliability</td>
+<td>OpenAI authoring guidance <span class="citation">[1]</span>; Anthropic authoring guidance <span class="citation">[4]</span>; agent design guidance <span class="citation">[10]</span></td>
+<td>Supported</td>
+</tr>
+<tr>
+<td>Evaluation needs final-state checks and repeated trials</td>
+<td>Anthropic eval framework <span class="citation">[11]</span>; enterprise guidance <span class="citation">[5]</span>; AgentBench and tau-bench <span class="citation">[12]</span>, <span class="citation">[13]</span></td>
+<td>Supported</td>
+</tr>
+<tr>
+<td>Security requires trust boundaries and layered controls</td>
+<td>OpenAI security <span class="citation">[14]</span>, <span class="citation">[22]</span>; NIST <span class="citation">[15]</span>, <span class="citation">[16]</span>; AgentDojo and MCP <span class="citation">[20]</span>, <span class="citation">[21]</span></td>
+<td>Supported</td>
+</tr>
+</tbody></table>
+
+<h3 class="subsection-title">Verification and limitations</h3>
+
+<p>The report's numbered citations map to <code>sources.jsonl</code>; evidence passages map to <code>evidence.jsonl</code>; atomic conclusions and support links are recorded in <code>claims.jsonl</code>. Automated checks validate required sections, bibliography coverage, citation formatting, and claim-support presence. The HTML and PDF are generated from the Markdown source and visually inspected after rendering. Remaining limitations are described in the report's Limitations & Caveats section.
+</p>
+
+</div>
+
+            <div class="bibliography">
+                <div class="section-title">Bibliography</div>
+                <div class="bibliography-content"><div class="bib-entry"><span class="bib-number">[1]</span> OpenAI (2026). <a href="https://developers.openai.com/plugins/build/skills" target="_blank" rel="noreferrer">Build skills</a>.</div>
+<div class="bib-entry"><span class="bib-number">[2]</span> OpenAI (2026). <a href="https://developers.openai.com/codex/concepts/customization#skills" target="_blank" rel="noreferrer">Customization: Skills</a>.</div>
+<div class="bib-entry"><span class="bib-number">[3]</span> Agent Skills project (2026). <a href="https://agentskills.io/specification" target="_blank" rel="noreferrer">Agent Skills Specification</a>.</div>
+<div class="bib-entry"><span class="bib-number">[4]</span> Anthropic (2026). <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices" target="_blank" rel="noreferrer">Skill authoring best practices</a>.</div>
+<div class="bib-entry"><span class="bib-number">[5]</span> Anthropic (2026). <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/enterprise" target="_blank" rel="noreferrer">Skills for enterprise</a>.</div>
+<div class="bib-entry"><span class="bib-number">[6]</span> Anthropic (2026). <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview" target="_blank" rel="noreferrer">Agent Skills overview</a>.</div>
+<div class="bib-entry"><span class="bib-number">[7]</span> Barry Zhang et al. (2025). <a href="https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills" target="_blank" rel="noreferrer">Equipping agents for the real world with Agent Skills</a>.</div>
+<div class="bib-entry"><span class="bib-number">[8]</span> Anthropic (2025). <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents" target="_blank" rel="noreferrer">Effective context engineering for AI agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[9]</span> Nelson F. Liu et al. (2024). <a href="https://arxiv.org/abs/2307.03172" target="_blank" rel="noreferrer">Lost in the Middle: How Language Models Use Long Contexts</a>.</div>
+<div class="bib-entry"><span class="bib-number">[10]</span> Erik Schluntz &amp; Barry Zhang (2024). <a href="https://www.anthropic.com/engineering/building-effective-agents" target="_blank" rel="noreferrer">Building Effective AI Agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[11]</span> Anthropic (2026). <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents" target="_blank" rel="noreferrer">Demystifying evals for AI agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[12]</span> Xiao Liu et al. (2023). <a href="https://arxiv.org/abs/2308.03688" target="_blank" rel="noreferrer">AgentBench: Evaluating LLMs as Agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[13]</span> Shunyu Yao et al. (2024). <a href="https://arxiv.org/abs/2406.12045" target="_blank" rel="noreferrer">tau-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains</a>.</div>
+<div class="bib-entry"><span class="bib-number">[14]</span> Thomas Shadwell &amp; Adrian Spanu (2026). <a href="https://openai.com/index/designing-agents-to-resist-prompt-injection/" target="_blank" rel="noreferrer">Designing AI agents to resist prompt injection</a>.</div>
+<div class="bib-entry"><span class="bib-number">[15]</span> NIST (2025). <a href="https://www.nist.gov/news-events/news/2025/01/technical-blog-strengthening-ai-agent-hijacking-evaluations" target="_blank" rel="noreferrer">Strengthening AI Agent Hijacking Evaluations</a>.</div>
+<div class="bib-entry"><span class="bib-number">[16]</span> NIST CAISI (2026). <a href="https://www.nist.gov/blogs/caisi-research-blog/insights-ai-agent-security-large-scale-red-teaming-competition" target="_blank" rel="noreferrer">Insights into AI Agent Security from a Large-Scale Red-Teaming Competition</a>.</div>
+<div class="bib-entry"><span class="bib-number">[17]</span> Yupei Liu et al. (2023). <a href="https://arxiv.org/abs/2310.12815" target="_blank" rel="noreferrer">Formalizing and Benchmarking Prompt Injection Attacks and Defenses</a>.</div>
+<div class="bib-entry"><span class="bib-number">[18]</span> OpenAI (2025). <a href="https://openai.com/business/guides-and-resources/a-practical-guide-to-building-ai-agents/" target="_blank" rel="noreferrer">A practical guide to building agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[19]</span> Agent Skills project (2026). <a href="https://agentskills.io/skill-creation/optimizing-descriptions" target="_blank" rel="noreferrer">Optimizing skill descriptions</a>.</div>
+<div class="bib-entry"><span class="bib-number">[20]</span> Edoardo Debenedetti et al. (2024). <a href="https://proceedings.neurips.cc/paper_files/paper/2024/hash/97091a5177d8dc64b1da8bf3e1f6fb54-Abstract-Datasets_and_Benchmarks_Track.html" target="_blank" rel="noreferrer">AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[21]</span> Model Context Protocol (2025). <a href="https://modelcontextprotocol.io/specification/2025-03-26/index#security-and-trust-safety" target="_blank" rel="noreferrer">Model Context Protocol Specification: Security and Trust and Safety</a>.</div>
+<div class="bib-entry"><span class="bib-number">[22]</span> Eric Wallace et al. (2024). <a href="https://openai.com/index/the-instruction-hierarchy/" target="_blank" rel="noreferrer">The Instruction Hierarchy: Training LLMs to Prioritize Privileged Instructions</a>.</div>
+<div class="bib-entry"><span class="bib-number">[23]</span> Ken Aizawa (2025). <a href="https://www.anthropic.com/engineering/writing-tools-for-agents" target="_blank" rel="noreferrer">Writing effective tools for agents - with agents</a>.</div>
+<div class="bib-entry"><span class="bib-number">[24]</span> Shunyu Yao et al. (2023). <a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noreferrer">ReAct: Synergizing Reasoning and Acting in Language Models</a>.</div></div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

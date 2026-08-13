@@ -1,0 +1,27 @@
+{
+  "version": "3.0.0",
+  "query": "How do LLM outputs degrade (context rot, unclear instructions, excessive tokens) and what techniques combat it?",
+  "mode": "deep",
+  "started_at": "2026-06-22T01:44:10.406540+00:00",
+  "finished_at": "2026-06-22T01:57:25.264804+00:00",
+  "assumptions": [
+    "Findings on frontier 2025-2026 models generalize to commonly used models (supported by Chroma's 18-model sweep).",
+    "Task-accuracy and text-quality proxies meaningfully approximate 'output quality'.",
+    "Scoped to context/token-driven degradation; quantization, RLHF/sycophancy, and data contamination noted as out-of-scope gaps."
+  ],
+  "provider_config": {
+    "primary": "search-cli",
+    "scholarly": null
+  },
+  "report_dir": "/research/Claude/LLM_Output_Degradation_Research_20260621",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "report.md"
+  },
+  "continuation": null,
+  "sources_count": 33,
+  "evidence_count": 17,
+  "word_count": 7969
+}

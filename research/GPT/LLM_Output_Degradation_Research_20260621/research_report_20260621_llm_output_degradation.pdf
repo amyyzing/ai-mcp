@@ -1,0 +1,710 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R 10 0 R 12 0 R 14 0 R 16 0 R 18 0 R 20 0 R 22 0 R 24 0 R 26 0 R 28 0 R 30 0 R] /Count 13 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Length 4369 >>
+stream
+BT /F2 16 Tf 54 730 Td (Research Report: Why LLM Outputs Degrade and How Teams Combat It) Tj ET
+BT /F2 14 Tf 54 690 Td (EXECUTIVE SUMMARY) Tj ET
+BT /F1 10 Tf 54 662 Td (LLM output degradation is not one bug. It is a family of failure modes that appear when the) Tj ET
+BT /F1 10 Tf 54 649 Td (model is asked to use too much context, conflicting context, stale context, unclear) Tj ET
+BT /F1 10 Tf 54 636 Td (instructions, or long conversation history. Long-context benchmarks show that large context) Tj ET
+BT /F1 10 Tf 54 623 Td (windows do not guarantee uniform use of information: models often perform best when relevant) Tj ET
+BT /F1 10 Tf 54 610 Td (facts are near the beginning or end of the prompt and worse when facts are buried in the) Tj ET
+BT /F1 10 Tf 54 597 Td (middle [1]. RULER found that most tested long-context models suffered large drops as input) Tj ET
+BT /F1 10 Tf 54 584 Td (length and task complexity increased, even when they did well on simple needle-in-a-haystack) Tj ET
+BT /F1 10 Tf 54 571 Td (retrieval [2]. NoLiMa likewise found that performance can collapse when literal lexical) Tj ET
+BT /F1 10 Tf 54 558 Td (overlap is removed from long-context retrieval tasks [3].) Tj ET
+BT /F1 10 Tf 54 539 Td (Conversation itself is another degradation channel. Laban et al. found an average 39%) Tj ET
+BT /F1 10 Tf 54 526 Td (performance drop when fully specified single-turn tasks were distributed across multi-turn) Tj ET
+BT /F1 10 Tf 54 513 Td (conversations, attributing much of the failure to premature assumptions and low recovery) Tj ET
+BT /F1 10 Tf 54 500 Td (after a wrong early turn [6]. Newer work frames this as an intent alignment problem: the) Tj ET
+BT /F1 10 Tf 54 487 Td (model has the necessary information somewhere in the dialogue, but the dialogue does not) Tj ET
+BT /F1 10 Tf 54 474 Td (compile into a clear task specification [7].) Tj ET
+BT /F1 10 Tf 54 455 Td (The strongest mitigation pattern is context engineering: curate, structure, compress,) Tj ET
+BT /F1 10 Tf 54 442 Td (retrieve, verify, and test the context instead of stuffing more tokens into the prompt.) Tj ET
+BT /F1 10 Tf 54 429 Td (Recent surveys define context engineering as a discipline covering retrieval, processing,) Tj ET
+BT /F1 10 Tf 54 416 Td (management, RAG, memory systems, tool reasoning, and multi-agent systems [16]. Practical) Tj ET
+BT /F1 10 Tf 54 403 Td (controls include explicit instruction hierarchy, clear output constraints, document tagging,) Tj ET
+BT /F1 10 Tf 54 390 Td (query placement, quote-first grounding, retrieval reranking, context condensation, stale-) Tj ET
+BT /F1 10 Tf 54 377 Td (context audits, and evals that replay realistic long or multi-turn workflows) Tj ET
+BT /F1 10 Tf 54 364 Td ([11][17][18][22].) Tj ET
+BT /F1 10 Tf 54 345 Td (Primary recommendation: treat the context window as a managed, testable runtime surface. In) Tj ET
+BT /F1 10 Tf 54 332 Td (practice, this means short authoritative instructions, separated data and instructions,) Tj ET
+BT /F1 10 Tf 54 319 Td (retrieval quality gates, conversation-state compaction, and regression tests for long-) Tj ET
+BT /F1 10 Tf 54 306 Td (context and multi-turn cases [8][9][16][17].) Tj ET
+BT /F1 10 Tf 54 287 Td (Confidence level: High for the main degradation mechanisms and mitigation families because) Tj ET
+BT /F1 10 Tf 54 274 Td (they are supported by multiple independent benchmarks, platform docs, and agent-system) Tj ET
+BT /F1 10 Tf 54 261 Td (papers [1][2][3][6][13][16]. Medium for exact operational recipes because best practice) Tj ET
+BT /F1 10 Tf 54 248 Td (varies by model family, task, and risk tolerance [17][18][19].) Tj ET
+BT /F2 14 Tf 54 221 Td (INTRODUCTION) Tj ET
+BT /F2 12 Tf 54 188 Td (Research Question) Tj ET
+BT /F1 10 Tf 54 164 Td (This report investigates how LLM outputs degrade during real use, with emphasis on "context) Tj ET
+BT /F1 10 Tf 54 151 Td (rot," long-context failure, unclear or conflicting instructions, token bloat, multi-turn) Tj ET
+BT /F1 10 Tf 54 138 Td (drift, and the mitigation patterns used in research and production systems. The scope is) Tj ET
+BT /F1 10 Tf 54 125 Td (technical and applied: the goal is not to rank specific vendors, but to explain why quality) Tj ET
+BT /F1 10 Tf 54 112 Td (declines and what engineering practices reduce the decline.) Tj ET
+BT /F2 12 Tf 54 88 Td (Scope and Methodology) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 4782 >>
+stream
+BT /F1 10 Tf 54 738 Td (The research covered five failure channels: position bias in long prompts, noise and) Tj ET
+BT /F1 10 Tf 54 725 Td (distractors in retrieved context, multi-turn conversation drift, instruction ambiguity or) Tj ET
+BT /F1 10 Tf 54 712 Td (conflict, and output-side degradation during long-form generation. It also covered six) Tj ET
+BT /F1 10 Tf 54 699 Td (mitigation families: prompt structure, retrieval and reranking, context compression,) Tj ET
+BT /F1 10 Tf 54 686 Td (persistent memory with provenance, instruction hierarchy, and task-specific evaluation. The) Tj ET
+BT /F1 10 Tf 54 673 Td (source base combines long-context benchmarks, RAG studies, instruction-following papers,) Tj ET
+BT /F1 10 Tf 54 660 Td (agent context-management papers, and official prompt-engineering guidance from OpenAI,) Tj ET
+BT /F1 10 Tf 54 647 Td (Anthropic, and Google Cloud [1][2][6][11][13][16][17][18][19].) Tj ET
+BT /F1 10 Tf 54 628 Td (The analysis prioritized primary sources: arXiv papers, benchmark descriptions, official) Tj ET
+BT /F1 10 Tf 54 615 Td (documentation, and papers that introduced named methods. Practitioner articles were used) Tj ET
+BT /F1 10 Tf 54 602 Td (only to discover terminology and were not relied on for major claims unless the same claim) Tj ET
+BT /F1 10 Tf 54 589 Td (appeared in a primary source. The most important evidence was triangulated across at least) Tj ET
+BT /F1 10 Tf 54 576 Td (three independent clusters: long-context benchmarks, multi-turn studies, and context-) Tj ET
+BT /F1 10 Tf 54 563 Td (management or prompt-design guidance [2][3][6][8][16][17].) Tj ET
+BT /F1 10 Tf 54 544 Td (The report uses "degradation" broadly to mean lower task accuracy, weaker grounding, longer) Tj ET
+BT /F1 10 Tf 54 531 Td (or less useful outputs, higher hallucination risk, worse instruction following, higher) Tj ET
+BT /F1 10 Tf 54 518 Td (latency and cost, or reduced recoverability after an early mistake. The report uses "context) Tj ET
+BT /F1 10 Tf 54 505 Td (rot" in two senses. The first is runtime context rot: irrelevant, stale, or misleading) Tj ET
+BT /F1 10 Tf 54 492 Td (tokens accumulate in the active prompt and distract the model [9][13]. The second is) Tj ET
+BT /F1 10 Tf 54 479 Td (persistent context rot: long-lived instruction files or memory artifacts become stale as the) Tj ET
+BT /F1 10 Tf 54 466 Td (underlying codebase or domain changes [20].) Tj ET
+BT /F2 12 Tf 54 442 Td (Key Assumptions) Tj ET
+BT /F1 10 Tf 54 418 Td (The first assumption is that the reader cares about applied LLM systems rather than model) Tj ET
+BT /F1 10 Tf 54 405 Td (training alone. This matters because many mitigations are system-level choices, such as) Tj ET
+BT /F1 10 Tf 54 392 Td (retrieval filtering, prompt structuring, and conversation summarization [16][17].) Tj ET
+BT /F1 10 Tf 54 373 Td (The second assumption is that "more context" is useful only when relevant context is) Tj ET
+BT /F1 10 Tf 54 360 Td (preserved and irrelevant context is controlled. Long-context RAG studies show that) Tj ET
+BT /F1 10 Tf 54 347 Td (additional retrieved passages can help up to a point, but they can also reduce answer) Tj ET
+BT /F1 10 Tf 54 334 Td (quality when hard negatives or excessive documents are added [13][14].) Tj ET
+BT /F1 10 Tf 54 315 Td (The third assumption is that single-turn benchmark accuracy can overstate real chat) Tj ET
+BT /F1 10 Tf 54 302 Td (reliability. Multi-turn work shows that the same task information can yield lower) Tj ET
+BT /F1 10 Tf 54 289 Td (performance when spread across a dialogue instead of delivered as a complete specification) Tj ET
+BT /F1 10 Tf 54 276 Td ([6][7].) Tj ET
+BT /F1 10 Tf 54 257 Td (The fourth assumption is that no one mitigation is sufficient. RAG can reduce some) Tj ET
+BT /F1 10 Tf 54 244 Td (hallucinations, but RAGTruth shows that RAG systems can still produce unsupported or) Tj ET
+BT /F1 10 Tf 54 231 Td (contradictory claims against retrieved content [15].) Tj ET
+BT /F2 14 Tf 54 204 Td (MAIN ANALYSIS) Tj ET
+BT /F2 12 Tf 54 171 Td (Finding 1: Long Context Windows Do Not Guarantee Uniform Context Use) Tj ET
+BT /F1 10 Tf 54 147 Td (The most reproducible degradation mechanism is positional fragility. Liu et al. tested) Tj ET
+BT /F1 10 Tf 54 134 Td (multi-document question answering and key-value retrieval and found that model performance) Tj ET
+BT /F1 10 Tf 54 121 Td (often depends on where the relevant information appears in the input context [1]. Their core) Tj ET
+BT /F1 10 Tf 54 108 Td (result is that models frequently perform best when the useful material appears near the) Tj ET
+BT /F1 10 Tf 54 95 Td (start or the end of the input and worse when it appears in the middle, even for models) Tj ET
+BT /F1 10 Tf 54 82 Td (advertised as long-context systems [1].) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 5401 >>
+stream
+BT /F1 10 Tf 54 738 Td (RULER strengthened this point by arguing that vanilla needle-in-a-haystack retrieval is too) Tj ET
+BT /F1 10 Tf 54 725 Td (easy to represent real long-context understanding [2]. Hsieh et al. expanded the benchmark) Tj ET
+BT /F1 10 Tf 54 712 Td (to include multiple needles, variable quantities of needles, multi-hop tracing, and) Tj ET
+BT /F1 10 Tf 54 699 Td (aggregation tasks [2]. They evaluated 17 long-context models and reported that nearly) Tj ET
+BT /F1 10 Tf 54 686 Td (perfect vanilla needle retrieval did not predict robust performance as context length and) Tj ET
+BT /F1 10 Tf 54 673 Td (task complexity increased [2]. The paper also reports that only about half of models) Tj ET
+BT /F1 10 Tf 54 660 Td (claiming context windows of 32K tokens or more maintained satisfactory performance at 32K) Tj ET
+BT /F1 10 Tf 54 647 Td (under RULER's broader tests [2].) Tj ET
+BT /F1 10 Tf 54 628 Td (NoLiMa gives a sharper version of the same warning. Modarressi et al. designed a benchmark) Tj ET
+BT /F1 10 Tf 54 615 Td (where the question and the relevant "needle" have minimal lexical overlap, which forces) Tj ET
+BT /F1 10 Tf 54 602 Td (models to infer associations rather than match literal text [3]. The paper reports that 10) Tj ET
+BT /F1 10 Tf 54 589 Td (of 12 tested long-context models dropped below 50% of their strong short-context baselines) Tj ET
+BT /F1 10 Tf 54 576 Td (at 32K, while GPT-4o fell from 99.3% in short contexts to 69.7% in that harder long-context) Tj ET
+BT /F1 10 Tf 54 563 Td (setting [3]. This matters because many production prompts depend on semantic relevance, not) Tj ET
+BT /F1 10 Tf 54 550 Td (literal string matching [3].) Tj ET
+BT /F1 10 Tf 54 531 Td (LongBench v2 shows that long-context reasoning is also hard in realistic tasks. Bai et al.) Tj ET
+BT /F1 10 Tf 54 518 Td (built 503 challenging questions with contexts from 8K to 2M words across single-document QA,) Tj ET
+BT /F1 10 Tf 54 505 Td (multi-document QA, long in-context learning, long-dialogue history understanding, code) Tj ET
+BT /F1 10 Tf 54 492 Td (repository understanding, and structured-data understanding [4]. Human experts achieved) Tj ET
+BT /F1 10 Tf 54 479 Td (53.7% accuracy under a 15-minute limit, the best direct-answering model achieved 50.1%, and) Tj ET
+BT /F1 10 Tf 54 466 Td (o1-preview with longer reasoning achieved 57.7% [4]. The implication is not that long-) Tj ET
+BT /F1 10 Tf 54 453 Td (context models are useless; it is that task framing, reasoning time, and context structure) Tj ET
+BT /F1 10 Tf 54 440 Td (remain decisive [4].) Tj ET
+BT /F1 10 Tf 54 421 Td (Attention mechanics help explain why the problem is structural. StreamingLLM found that) Tj ET
+BT /F1 10 Tf 54 408 Td (initial tokens can act as attention sinks: they attract disproportionate attention even when) Tj ET
+BT /F1 10 Tf 54 395 Td (not semantically important [10]. Xiao et al. showed that retaining the key-value cache for) Tj ET
+BT /F1 10 Tf 54 382 Td (initial tokens can recover performance under window attention in streaming settings, which) Tj ET
+BT /F1 10 Tf 54 369 Td (implies that raw recency or raw token count is not the whole story [10]. A model's attention) Tj ET
+BT /F1 10 Tf 54 356 Td (budget, positional encoding, and cache policy can shape what it can reliably use [10].) Tj ET
+BT /F1 10 Tf 54 337 Td (The practical conclusion is that a long context window is capacity, not comprehension.) Tj ET
+BT /F1 10 Tf 54 324 Td (Capacity says the model can accept the tokens. Comprehension says it can select, integrate,) Tj ET
+BT /F1 10 Tf 54 311 Td (and reason over the right tokens under realistic distractors. Benchmarks consistently show) Tj ET
+BT /F1 10 Tf 54 298 Td (that the second property is weaker than the first [1][2][3][4].) Tj ET
+BT /F2 12 Tf 54 274 Td (Finding 2: Noise, Hard Negatives, and Stale Context Create "Context) Tj ET
+BT /F2 12 Tf 54 259 Td (Rot") Tj ET
+BT /F1 10 Tf 54 235 Td (Runtime context rot happens when the prompt contains more text but less useful signal. Long-) Tj ET
+BT /F1 10 Tf 54 222 Td (context RAG research shows the shape of this problem clearly. Jin et al. studied long-) Tj ET
+BT /F1 10 Tf 54 209 Td (context LLMs in RAG settings and found that adding more retrieved passages can initially) Tj ET
+BT /F1 10 Tf 54 196 Td (improve performance and then degrade output as more passages are added [13]. They identify) Tj ET
+BT /F1 10 Tf 54 183 Td (hard negatives as a key contributor: retrieved passages can look relevant while pushing the) Tj ET
+BT /F1 10 Tf 54 170 Td (model toward wrong or unsupported reasoning [13].) Tj ET
+BT /F1 10 Tf 54 151 Td (Leng et al. studied RAG workflows across 20 open-source and commercial models while varying) Tj ET
+BT /F1 10 Tf 54 138 Td (context length from 2,000 to 128,000 tokens and up to 2 million tokens where supported [14].) Tj ET
+BT /F1 10 Tf 54 125 Td (They found that retrieving more documents can improve performance, but only a handful of) Tj ET
+BT /F1 10 Tf 54 112 Td (recent state-of-the-art models maintained consistent accuracy above 64K tokens [14]. This) Tj ET
+BT /F1 10 Tf 54 99 Td (supports a practical rule: retrieval recall is useful only when paired with relevance) Tj ET
+BT /F1 10 Tf 54 86 Td (control, reranking, and context budgeting [13][14].) Tj ET
+BT /F1 10 Tf 54 67 Td (RAGTruth shows why retrieval is a mitigation but not a guarantee. Niu et al. created a) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 5479 >>
+stream
+BT /F1 10 Tf 54 738 Td (corpus of nearly 18,000 naturally generated RAG responses with manual hallucination) Tj ET
+BT /F1 10 Tf 54 725 Td (annotations [15]. Their premise is that RAG is a main technique for reducing hallucinations,) Tj ET
+BT /F1 10 Tf 54 712 Td (but RAG outputs may still contain claims unsupported by, or contradictory to, the retrieved) Tj ET
+BT /F1 10 Tf 54 699 Td (content [15]. This failure mode is common in systems that retrieve correct documents but do) Tj ET
+BT /F1 10 Tf 54 686 Td (not force answer grounding at the claim level [15][22].) Tj ET
+BT /F1 10 Tf 54 667 Td (Persistent context rot is a related but distinct problem. Treude and Baltes define context) Tj ET
+BT /F1 10 Tf 54 654 Td (rot in AI-assisted software development as stale persistent context in files such as) Tj ET
+BT /F1 10 Tf 54 641 Td (CLAUDE.md, AGENTS.md, and .cursorrules [20]. Their preliminary test used an existing) Tj ET
+BT /F1 10 Tf 54 628 Td (documentation-consistency checker on 356 repositories and found stale code element) Tj ET
+BT /F1 10 Tf 54 615 Td (references in 23.0% of repositories [20]. This is not a long-context attention problem by) Tj ET
+BT /F1 10 Tf 54 602 Td (itself; it is a governance problem where the model receives obsolete instructions or) Tj ET
+BT /F1 10 Tf 54 589 Td (outdated architectural claims [20].) Tj ET
+BT /F1 10 Tf 54 570 Td (Context engineering surveys now treat this as an engineering discipline rather than a) Tj ET
+BT /F1 10 Tf 54 557 Td (prompting trick. Mei et al. describe context engineering as optimizing the information) Tj ET
+BT /F1 10 Tf 54 544 Td (payload supplied at inference time and decompose it into context retrieval and generation,) Tj ET
+BT /F1 10 Tf 54 531 Td (context processing, and context management [16]. The same survey maps those components into) Tj ET
+BT /F1 10 Tf 54 518 Td (RAG, memory systems, tool-integrated reasoning, and multi-agent systems [16]. That taxonomy) Tj ET
+BT /F1 10 Tf 54 505 Td (fits observed production failures: the issue is often not that the model lacks capability,) Tj ET
+BT /F1 10 Tf 54 492 Td (but that the supplied context is noisy, stale, badly ranked, or unmanaged [13][16][20].) Tj ET
+BT /F1 10 Tf 54 473 Td (The mitigation is not simply "summarize everything." Aggressive compression can erase the) Tj ET
+BT /F1 10 Tf 54 460 Td (details needed for exact recovery, while uncompressed history can distract the model. AdaCoM) Tj ET
+BT /F1 10 Tf 54 447 Td (frames this as a fidelity-reliability trade-off: stronger base agents may benefit from) Tj ET
+BT /F1 10 Tf 54 434 Td (higher-fidelity preservation, while weaker agents may need more aggressive compression to) Tj ET
+BT /F1 10 Tf 54 421 Td (remain in a reliable reasoning regime [9]. The report's operational takeaway is to manage) Tj ET
+BT /F1 10 Tf 54 408 Td (context like a cache: keep authoritative instructions small, keep evidence retrievable,) Tj ET
+BT /F1 10 Tf 54 395 Td (prune stale content, and preserve exact source locators for claims that may need) Tj ET
+BT /F1 10 Tf 54 382 Td (verification [9][15][16].) Tj ET
+BT /F2 12 Tf 54 358 Td (Finding 3: Multi-Turn Conversations Degrade Through Premature) Tj ET
+BT /F2 12 Tf 54 343 Td (Assumptions and Low Recovery) Tj ET
+BT /F1 10 Tf 54 319 Td (LLMs often appear strongest when the full task is specified in one clean prompt. Laban et) Tj ET
+BT /F1 10 Tf 54 306 Td (al. directly tested the difference between single-turn and multi-turn formats and found that) Tj ET
+BT /F1 10 Tf 54 293 Td (top open- and closed-weight models performed significantly worse in multi-turn conversations) Tj ET
+BT /F1 10 Tf 54 280 Td (than in fully specified single-turn settings [6]. Their large-scale simulation over more) Tj ET
+BT /F1 10 Tf 54 267 Td (than 200,000 conversations found an average 39% drop across six generation tasks [6].) Tj ET
+BT /F1 10 Tf 54 248 Td (The mechanism matters more than the headline. Laban et al. found that models often made) Tj ET
+BT /F1 10 Tf 54 235 Td (assumptions in early turns and prematurely attempted final solutions, then over-relied on) Tj ET
+BT /F1 10 Tf 54 222 Td (those early outputs in later turns [6]. This creates path dependence: a wrong early) Tj ET
+BT /F1 10 Tf 54 209 Td (interpretation becomes part of the conversation state, and later messages are interpreted) Tj ET
+BT /F1 10 Tf 54 196 Td (through that distorted state [6]. The degradation is therefore not only about token length;) Tj ET
+BT /F1 10 Tf 54 183 Td (it is also about conversational commitments that become implicit context [6].) Tj ET
+BT /F1 10 Tf 54 164 Td (Liu et al. sharpen this interpretation by arguing that "lost in conversation" is driven by) Tj ET
+BT /F1 10 Tf 54 151 Td (intent mismatch rather than a simple absence of model capability [7]. Their 2026 paper) Tj ET
+BT /F1 10 Tf 54 138 Td (argues that scaling model size or improving training alone cannot fully solve a gap that) Tj ET
+BT /F1 10 Tf 54 125 Td (arises from structural ambiguity in conversational context [7]. They propose separating) Tj ET
+BT /F1 10 Tf 54 112 Td (intent understanding from task execution through a Mediator-Assistant architecture that) Tj ET
+BT /F1 10 Tf 54 99 Td (rewrites vague dialogue into explicit structured instructions [7].) Tj ET
+BT /F1 10 Tf 54 80 Td (MT-OSC attacks the same class of failure from the context-management side. Singh et al.) Tj ET
+BT /F1 10 Tf 54 67 Td (describe a One-off Sequential Condensation framework that condenses chat history in the) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 11 0 R >>
+endobj
+13 0 obj
+<< /Length 5443 >>
+stream
+BT /F1 10 Tf 54 738 Td (background while retaining essential information [8]. The paper reports token-count) Tj ET
+BT /F1 10 Tf 54 725 Td (reductions up to 72% in 10-turn dialogues and improved or preserved accuracy across multi-) Tj ET
+BT /F1 10 Tf 54 712 Td (turn benchmarks [8]. This suggests that many conversations benefit from an explicit state) Tj ET
+BT /F1 10 Tf 54 699 Td (representation rather than a raw appended transcript [8].) Tj ET
+BT /F1 10 Tf 54 680 Td (AdaCoM generalizes the idea to long-horizon agent tasks such as web search and deep research) Tj ET
+BT /F1 10 Tf 54 667 Td ([9]. Yi et al. train an external LLM to manage the context of a frozen agent through actions) Tj ET
+BT /F1 10 Tf 54 654 Td (that preserve task constraints and progress while pruning stale content [9]. This is) Tj ET
+BT /F1 10 Tf 54 641 Td (important for closed-source agents because the context manager can operate outside the) Tj ET
+BT /F1 10 Tf 54 628 Td (underlying model [9].) Tj ET
+BT /F1 10 Tf 54 609 Td (The practical pattern is to compile conversation into state. A robust agent should retain) Tj ET
+BT /F1 10 Tf 54 596 Td (stable goals, constraints, open questions, decisions, evidence locators, and user) Tj ET
+BT /F1 10 Tf 54 583 Td (preferences while demoting obsolete attempts and early mistakes. Raw chat history is useful) Tj ET
+BT /F1 10 Tf 54 570 Td (for auditability, but it is a poor runtime state representation once the dialogue becomes) Tj ET
+BT /F1 10 Tf 54 557 Td (long or exploratory [6][8][9].) Tj ET
+BT /F2 12 Tf 54 533 Td (Finding 4: Unclear or Conflicting Instructions Turn Context Into) Tj ET
+BT /F2 12 Tf 54 518 Td (Competing Commands) Tj ET
+BT /F1 10 Tf 54 494 Td (Instruction ambiguity degrades output because the model must infer priority, scope, format,) Tj ET
+BT /F1 10 Tf 54 481 Td (and success criteria from text that may not distinguish command, data, example, and) Tj ET
+BT /F1 10 Tf 54 468 Td (historical chatter. Anthropic's prompting guidance says complex prompts should separate) Tj ET
+BT /F1 10 Tf 54 455 Td (instructions, context, examples, and variable inputs, and it recommends XML tags because) Tj ET
+BT /F1 10 Tf 54 442 Td (they help Claude parse mixed prompt components unambiguously [17]. Google Cloud's prompt-) Tj ET
+BT /F1 10 Tf 54 429 Td (design documentation similarly exposes separate strategy pages for clear instructions,) Tj ET
+BT /F1 10 Tf 54 416 Td (system instructions, examples, context, prompt structure, and task decomposition [18].) Tj ET
+BT /F1 10 Tf 54 397 Td (Instruction conflict is the adversarial version of the same problem. Wallace et al. argue) Tj ET
+BT /F1 10 Tf 54 384 Td (that LLMs are vulnerable when they treat system prompts, user prompts, and third-party text) Tj ET
+BT /F1 10 Tf 54 371 Td (as if they had equal priority [11]. Their instruction hierarchy work trains models to ignore) Tj ET
+BT /F1 10 Tf 54 358 Td (lower-priority conflicting instructions, improving robustness to prompt injection and) Tj ET
+BT /F1 10 Tf 54 345 Td (jailbreak-style attacks while imposing minimal degradation on ordinary capabilities [11].) Tj ET
+BT /F1 10 Tf 54 326 Td (Many-tier instruction hierarchy work shows that simple role labels may be too coarse for) Tj ET
+BT /F1 10 Tf 54 313 Td (agentic systems. Zhang et al. argue that real agents receive instructions from system) Tj ET
+BT /F1 10 Tf 54 300 Td (messages, user prompts, tool outputs, and other sources with many trust levels [12]. Their) Tj ET
+BT /F1 10 Tf 54 287 Td (ManyIH benchmark includes up to 12 privilege levels and reports that frontier models perform) Tj ET
+BT /F1 10 Tf 54 274 Td (poorly at about 40% accuracy when instruction conflict scales [12]. This matters because) Tj ET
+BT /F1 10 Tf 54 261 Td (agent prompts often mix developer instructions, user goals, retrieved documents, tool) Tj ET
+BT /F1 10 Tf 54 248 Td (output, previous assistant messages, and generated plans [12].) Tj ET
+BT /F1 10 Tf 54 229 Td (Official platform docs converge on a simple mitigation: make the model's job legible.) Tj ET
+BT /F1 10 Tf 54 216 Td (Anthropic recommends specific output constraints, sequential steps when order matters,) Tj ET
+BT /F1 10 Tf 54 203 Td (examples for consistent output, XML tags for prompt sections, and role prompts for behavior) Tj ET
+BT /F1 10 Tf 54 190 Td (focus [17]. OpenAI's Responses API documentation separates `instructions` from `input`, and) Tj ET
+BT /F1 10 Tf 54 177 Td (it also represents message roles such as developer and user, which is an API-level way to) Tj ET
+BT /F1 10 Tf 54 164 Td (keep instruction layers distinct [19]. Google Cloud's prompt-design guide places clear) Tj ET
+BT /F1 10 Tf 54 151 Td (instructions, system instructions, few-shot examples, context, prompt structure, and task) Tj ET
+BT /F1 10 Tf 54 138 Td (breakdown into separate prompting strategies [18].) Tj ET
+BT /F1 10 Tf 54 119 Td (The core insight is that unclear instructions do not just produce vague output; they consume) Tj ET
+BT /F1 10 Tf 54 106 Td (context budget and increase entropy. When a prompt says "be thorough," "be concise," "use) Tj ET
+BT /F1 10 Tf 54 93 Td (all sources," "do not overdo it," and "follow previous style" without priority rules, the) Tj ET
+BT /F1 10 Tf 54 80 Td (model may respond with token-heavy compromise behavior. That often appears as answer bloat,) Tj ET
+BT /F1 10 Tf 54 67 Td (hedging, redundant summaries, and loss of the actual task objective [6][17][18].) Tj ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 13 0 R >>
+endobj
+15 0 obj
+<< /Length 5164 >>
+stream
+BT /F2 12 Tf 54 733 Td (Finding 5: Output-Side Degradation Is Different From Input-Side) Tj ET
+BT /F2 12 Tf 54 718 Td (Degradation) Tj ET
+BT /F1 10 Tf 54 694 Td (Input comprehension and output generation degrade differently. A model can find the right) Tj ET
+BT /F1 10 Tf 54 681 Td (evidence and still fail to produce a coherent, bounded, instruction-following long answer.) Tj ET
+BT /F1 10 Tf 54 668 Td (LongGenBench was designed because many long-context benchmarks evaluate input understanding) Tj ET
+BT /F1 10 Tf 54 655 Td (but not long-form generation quality [5]. Wu et al. tested tasks requiring long outputs) Tj ET
+BT /F1 10 Tf 54 642 Td (under complex constraints and found that all ten evaluated models struggled with long text) Tj ET
+BT /F1 10 Tf 54 629 Td (generation, especially as generation length increased [5].) Tj ET
+BT /F1 10 Tf 54 610 Td (FACTS Grounding evaluates whether long-form responses are fully grounded in a provided long) Tj ET
+BT /F1 10 Tf 54 597 Td (document [22]. Jacovi et al. require responses to satisfy the user request and be accurate) Tj ET
+BT /F1 10 Tf 54 584 Td (with respect to the supplied document, using a two-phase judging process and public and) Tj ET
+BT /F1 10 Tf 54 571 Td (private leaderboard splits [22]. This benchmark exists because source-grounded long-form) Tj ET
+BT /F1 10 Tf 54 558 Td (generation is a separate capability from short-answer retrieval [22].) Tj ET
+BT /F1 10 Tf 54 539 Td (Simple factuality benchmarks show another output-side issue: models should sometimes decline) Tj ET
+BT /F1 10 Tf 54 526 Td (rather than guess. Wei et al. introduced SimpleQA as a benchmark for short, fact-seeking) Tj ET
+BT /F1 10 Tf 54 513 Td (questions where answers are graded correct, incorrect, or not attempted [23]. They describe) Tj ET
+BT /F1 10 Tf 54 500 Td (ideal behavior as answering when confident and not attempting questions when the model is) Tj ET
+BT /F1 10 Tf 54 487 Td (not confident [23]. In production systems, unclear instructions can suppress this behavior) Tj ET
+BT /F1 10 Tf 54 474 Td (by implicitly rewarding completion over calibrated uncertainty [17][23].) Tj ET
+BT /F1 10 Tf 54 455 Td (Long-form output also interacts with conversation drift. Laban et al. identify premature) Tj ET
+BT /F1 10 Tf 54 442 Td (generation as a multi-turn failure mechanism, where the model tries to solve before the task) Tj ET
+BT /F1 10 Tf 54 429 Td (is fully specified [6]. Once that premature answer is in the transcript, subsequent) Tj ET
+BT /F1 10 Tf 54 416 Td (responses may use it as context, which increases the chance of compounding assumptions [6].) Tj ET
+BT /F1 10 Tf 54 403 Td (This is why "answer later, clarify first" can be a reliability control rather than a) Tj ET
+BT /F1 10 Tf 54 390 Td (politeness preference [6][7].) Tj ET
+BT /F1 10 Tf 54 371 Td (Mitigations for output-side degradation focus on structure and verification. Anthropic) Tj ET
+BT /F1 10 Tf 54 358 Td (recommends asking the model to quote relevant parts of long documents before carrying out a) Tj ET
+BT /F1 10 Tf 54 345 Td (long-context task, which helps the model cut through noise [17]. RAGTruth motivates claim-) Tj ET
+BT /F1 10 Tf 54 332 Td (level hallucination detection because RAG outputs can include unsupported claims even when) Tj ET
+BT /F1 10 Tf 54 319 Td (retrieved content is available [15]. FACTS Grounding operationalizes the same idea at) Tj ET
+BT /F1 10 Tf 54 306 Td (benchmark level by scoring whether long-form answers are grounded in the document [22].) Tj ET
+BT /F1 10 Tf 54 287 Td (The practical distinction is useful. If the model cannot locate evidence, improve retrieval,) Tj ET
+BT /F1 10 Tf 54 274 Td (reranking, ordering, and context selection [13][14]. If the model can locate evidence but) Tj ET
+BT /F1 10 Tf 54 261 Td (writes a bad answer, improve output schemas, citation requirements, quote-first plans,) Tj ET
+BT /F1 10 Tf 54 248 Td (stepwise decomposition, and factuality evaluation [15][17][22]. Treating both as "bad) Tj ET
+BT /F1 10 Tf 54 235 Td (context" hides which lever needs to move.) Tj ET
+BT /F2 12 Tf 54 211 Td (Finding 6: The Mitigation Stack Is Context Engineering, Not Prompt) Tj ET
+BT /F2 12 Tf 54 196 Td (Length) Tj ET
+BT /F1 10 Tf 54 172 Td (The strongest mitigation stack has five layers. The first layer is instruction hygiene:) Tj ET
+BT /F1 10 Tf 54 159 Td (separate durable instructions from user requests, separate instructions from data, state) Tj ET
+BT /F1 10 Tf 54 146 Td (output format and constraints, and include representative examples when consistency matters) Tj ET
+BT /F1 10 Tf 54 133 Td ([17][18][19]. This reduces ambiguity before the model spends tokens resolving it [17].) Tj ET
+BT /F1 10 Tf 54 114 Td (The second layer is retrieval discipline. RAG should retrieve enough evidence to answer, but) Tj ET
+BT /F1 10 Tf 54 101 Td (not so much that hard negatives dominate the prompt [13][14]. Reranking, deduplication,) Tj ET
+BT /F1 10 Tf 54 88 Td (source trust metadata, date filtering, and query expansion are ways to improve context) Tj ET
+BT /F1 10 Tf 54 75 Td (quality before the model sees the tokens [13][14][16]. RAGTruth shows that retrieval alone) Tj ET
+endstream
+endobj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 15 0 R >>
+endobj
+17 0 obj
+<< /Length 4833 >>
+stream
+BT /F1 10 Tf 54 738 Td (does not prove grounding, so answer generation still needs verification [15].) Tj ET
+BT /F1 10 Tf 54 719 Td (The third layer is context compaction with evidence preservation. MT-OSC shows that) Tj ET
+BT /F1 10 Tf 54 706 Td (condensed multi-turn histories can reduce token count and narrow the multi-turn performance) Tj ET
+BT /F1 10 Tf 54 693 Td (gap [8]. AdaCoM shows that adaptive context managers can prune stale content while) Tj ET
+BT /F1 10 Tf 54 680 Td (preserving task constraints and progress [9]. The key design principle is to compress state,) Tj ET
+BT /F1 10 Tf 54 667 Td (not evidence: summaries are acceptable for goals and decisions, but exact quotes, file) Tj ET
+BT /F1 10 Tf 54 654 Td (paths, IDs, and source locators should remain dereferenceable [8][9][15].) Tj ET
+BT /F1 10 Tf 54 635 Td (The fourth layer is instruction hierarchy and trust boundaries. System and developer) Tj ET
+BT /F1 10 Tf 54 622 Td (instructions should remain above user requests, user requests should remain above untrusted) Tj ET
+BT /F1 10 Tf 54 609 Td (retrieved content, and tool outputs should be treated as data unless explicitly privileged) Tj ET
+BT /F1 10 Tf 54 596 Td ([11][12][19]. ManyIH suggests that realistic agents may need more than a few role labels) Tj ET
+BT /F1 10 Tf 54 583 Td (because sources can have many privilege levels and contexts [12].) Tj ET
+BT /F1 10 Tf 54 564 Td (The fifth layer is evaluation. Long-context systems should be tested with buried facts,) Tj ET
+BT /F1 10 Tf 54 551 Td (multi-hop retrieval, distracting hard negatives, long dialogue histories, and long-form) Tj ET
+BT /F1 10 Tf 54 538 Td (grounded outputs [2][3][4][22]. Multi-turn systems should be tested against the same tasks) Tj ET
+BT /F1 10 Tf 54 525 Td (in both single-turn and multi-turn forms because single-turn success can mask conversation-) Tj ET
+BT /F1 10 Tf 54 512 Td (state failures [6][7]. Prompt and context changes should be regression-tested because) Tj ET
+BT /F1 10 Tf 54 499 Td (persistent context files can rot as the underlying software changes [20].) Tj ET
+BT /F1 10 Tf 54 480 Td (The resulting discipline is closer to runtime systems engineering than copywriting. Good) Tj ET
+BT /F1 10 Tf 54 467 Td (prompts matter, but they are one component of a managed context pipeline that includes) Tj ET
+BT /F1 10 Tf 54 454 Td (retrieval, state, memory, hierarchy, observability, and tests [16][17][18].) Tj ET
+BT /F2 14 Tf 54 427 Td (SYNTHESIS AND INSIGHTS) Tj ET
+BT /F2 12 Tf 54 394 Td (Patterns Identified) Tj ET
+BT /F1 10 Tf 54 370 Td (The first pattern is that degradation usually comes from selection failure. The model has) Tj ET
+BT /F1 10 Tf 54 357 Td (too many plausible things to attend to, too many historical commitments to preserve, or too) Tj ET
+BT /F1 10 Tf 54 344 Td (many instruction-like strings competing for priority [1][6][11]. Long-context benchmarks) Tj ET
+BT /F1 10 Tf 54 331 Td (expose selection failure spatially, RAG studies expose it semantically, and instruction-) Tj ET
+BT /F1 10 Tf 54 318 Td (hierarchy work exposes it by trust level [1][13][12].) Tj ET
+BT /F1 10 Tf 54 299 Td (The second pattern is that raw context and useful state diverge over time. A long transcript) Tj ET
+BT /F1 10 Tf 54 286 Td (includes goals, failed attempts, stale assumptions, tool outputs, user corrections, and) Tj ET
+BT /F1 10 Tf 54 273 Td (partial summaries [6][8]. A good runtime state should preserve goals, constraints,) Tj ET
+BT /F1 10 Tf 54 260 Td (decisions, evidence, and open questions while demoting dead ends [8][9]. This is why) Tj ET
+BT /F1 10 Tf 54 247 Td (compaction can improve quality even when it removes tokens: it changes the prompt from an) Tj ET
+BT /F1 10 Tf 54 234 Td (archive into a task state [8][9].) Tj ET
+BT /F1 10 Tf 54 215 Td (The third pattern is that model capability and context quality multiply rather than add. A) Tj ET
+BT /F1 10 Tf 54 202 Td (stronger model may survive more noise, but RULER, NoLiMa, and LongBench v2 all show that) Tj ET
+BT /F1 10 Tf 54 189 Td (longer contexts and harder reasoning still create sharp performance gaps [2][3][4]. Better) Tj ET
+BT /F1 10 Tf 54 176 Td (context can unlock model capability, while bad context can suppress it [13][16].) Tj ET
+BT /F2 12 Tf 54 152 Td (Novel Insights) Tj ET
+BT /F1 10 Tf 54 128 Td (The most useful mental model is "context is executable input." In ordinary software,) Tj ET
+BT /F1 10 Tf 54 115 Td (untrusted data, stale configuration, and conflicting flags cause failures because they are) Tj ET
+BT /F1 10 Tf 54 102 Td (interpreted by a runtime. In LLM systems, prompt text is interpreted by a probabilistic) Tj ET
+BT /F1 10 Tf 54 89 Td (runtime, so stale docs, irrelevant retrievals, buried facts, and conflicting commands become) Tj ET
+BT /F1 10 Tf 54 76 Td (execution hazards [11][12][20].) Tj ET
+endstream
+endobj
+18 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 17 0 R >>
+endobj
+19 0 obj
+<< /Length 4561 >>
+stream
+BT /F1 10 Tf 54 738 Td (A second insight is that summaries should not be treated as memory. Summaries are lossy) Tj ET
+BT /F1 10 Tf 54 725 Td (state representations, while memory should include dereferenceable evidence. The papers on) Tj ET
+BT /F1 10 Tf 54 712 Td (multi-turn condensation and adaptive context management support compression, but RAGTruth) Tj ET
+BT /F1 10 Tf 54 699 Td (and FACTS Grounding show why exact grounding remains necessary for factual claims) Tj ET
+BT /F1 10 Tf 54 686 Td ([8][9][15][22].) Tj ET
+BT /F1 10 Tf 54 667 Td (A third insight is that "be more thorough" is risky unless paired with a budget and a) Tj ET
+BT /F1 10 Tf 54 654 Td (stopping rule. Thoroughness instructions can increase response length, tool use, and self-) Tj ET
+BT /F1 10 Tf 54 641 Td (generated intermediate context, which may worsen the very degradation they were meant to) Tj ET
+BT /F1 10 Tf 54 628 Td (prevent [6][17]. A better instruction is "include the minimum evidence needed to support) Tj ET
+BT /F1 10 Tf 54 615 Td (each claim, ask when the task is underspecified, and stop when acceptance criteria are met") Tj ET
+BT /F1 10 Tf 54 602 Td ([17][18].) Tj ET
+BT /F2 12 Tf 54 578 Td (Implications) Tj ET
+BT /F1 10 Tf 54 554 Td (For developers building AI assistants, the main implication is that context quality should) Tj ET
+BT /F1 10 Tf 54 541 Td (be observable. Logs should record which instructions, retrieved documents, summaries, and) Tj ET
+BT /F1 10 Tf 54 528 Td (tool outputs were supplied to the model for each answer [16]. Evals should replay long-turn) Tj ET
+BT /F1 10 Tf 54 515 Td (and long-context scenarios that resemble production traffic [6][22].) Tj ET
+BT /F1 10 Tf 54 496 Td (For prompt authors, the main implication is to write for disambiguation rather than) Tj ET
+BT /F1 10 Tf 54 483 Td (persuasion. Good prompts separate command from data, define success, name the expected) Tj ET
+BT /F1 10 Tf 54 470 Td (output shape, and state what the model should do when evidence is missing [17][18][23].) Tj ET
+BT /F1 10 Tf 54 451 Td (For teams using persistent agent instructions, the main implication is that prompt files) Tj ET
+BT /F1 10 Tf 54 438 Td (need ownership and freshness checks. Treude and Baltes show that stale references are common) Tj ET
+BT /F1 10 Tf 54 425 Td (enough to justify tooling borrowed from documentation consistency checks [20].) Tj ET
+BT /F2 14 Tf 54 398 Td (LIMITATIONS AND CAVEATS) Tj ET
+BT /F2 12 Tf 54 365 Td (Counterevidence Register) Tj ET
+BT /F1 10 Tf 54 341 Td (Long-context models can outperform RAG in some settings. Lee et al. introduce LOFT and) Tj ET
+BT /F1 10 Tf 54 328 Td (report that long-context LLMs can rival state-of-the-art retrieval and RAG systems on some) Tj ET
+BT /F1 10 Tf 54 315 Td (real-world tasks, though they still struggle with compositional reasoning required in SQL-) Tj ET
+BT /F1 10 Tf 54 302 Td (like tasks [24]. Li et al. also report that long context can outperform RAG in some) Tj ET
+BT /F1 10 Tf 54 289 Td (question-answering benchmarks, especially Wikipedia-based questions, while RAG has) Tj ET
+BT /F1 10 Tf 54 276 Td (advantages in dialogue-based and general query settings [25]. This means the right) Tj ET
+BT /F1 10 Tf 54 263 Td (mitigation is task-dependent rather than a universal preference for RAG or long context) Tj ET
+BT /F1 10 Tf 54 250 Td ([24][25].) Tj ET
+BT /F1 10 Tf 54 231 Td (Anthropic's long-context guidance says placing long documents near the top and queries near) Tj ET
+BT /F1 10 Tf 54 218 Td (the end can improve quality, with tests showing up to 30% improvement for complex multi-) Tj ET
+BT /F1 10 Tf 54 205 Td (document inputs [17]. That recommendation complicates a simplistic "put important) Tj ET
+BT /F1 10 Tf 54 192 Td (instructions first" rule because the best ordering depends on whether the prompt is) Tj ET
+BT /F1 10 Tf 54 179 Td (dominated by documents, instructions, or examples [17].) Tj ET
+BT /F1 10 Tf 54 160 Td (Instruction hierarchy can mitigate prompt injection and conflict, but ManyIH suggests that) Tj ET
+BT /F1 10 Tf 54 147 Td (current frontier models still struggle when privilege levels scale [12]. This means role) Tj ET
+BT /F1 10 Tf 54 134 Td (separation in an API is necessary but not sufficient for complex agent settings [12][19].) Tj ET
+BT /F2 12 Tf 54 110 Td (Known Gaps) Tj ET
+BT /F1 10 Tf 54 86 Td (The research base has uneven coverage of closed production systems. Many papers evaluate) Tj ET
+BT /F1 10 Tf 54 73 Td (public benchmarks or simulated conversations, while real enterprise assistants have private) Tj ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 19 0 R >>
+endobj
+21 0 obj
+<< /Length 4527 >>
+stream
+BT /F1 10 Tf 54 738 Td (retrieval corpora, custom toolchains, and proprietary prompts [6][14][16]. This limits) Tj ET
+BT /F1 10 Tf 54 725 Td (direct transfer from benchmark scores to a specific deployment.) Tj ET
+BT /F1 10 Tf 54 706 Td (The phrase "context rot" is not standardized. In AI-assisted software development, Treude) Tj ET
+BT /F1 10 Tf 54 693 Td (and Baltes use it to describe stale persistent context artifacts [20]. In broader) Tj ET
+BT /F1 10 Tf 54 680 Td (practitioner usage, it often describes runtime prompt pollution from irrelevant or stale) Tj ET
+BT /F1 10 Tf 54 667 Td (tokens [9][13]. This report uses both meanings and labels them explicitly.) Tj ET
+BT /F1 10 Tf 54 648 Td (The report does not benchmark model-specific prompt recipes. Official docs from Anthropic,) Tj ET
+BT /F1 10 Tf 54 635 Td (Google, and OpenAI agree on broad structure, clarity, examples, and separated roles, but) Tj ET
+BT /F1 10 Tf 54 622 Td (model families differ in details such as ideal ordering, verbosity controls, and reasoning) Tj ET
+BT /F1 10 Tf 54 609 Td (configuration [17][18][19].) Tj ET
+BT /F2 12 Tf 54 585 Td (Areas of Uncertainty) Tj ET
+BT /F1 10 Tf 54 561 Td (The largest uncertainty is how quickly frontier-model behavior changes. Prompting practices) Tj ET
+BT /F1 10 Tf 54 548 Td (that reduce under-triggering in one model generation can cause over-triggering in another,) Tj ET
+BT /F1 10 Tf 54 535 Td (and Anthropic's migration guidance explicitly warns that aggressive anti-laziness prompting) Tj ET
+BT /F1 10 Tf 54 522 Td (may need to be dialed back for newer, more proactive models [17]. This makes live evals more) Tj ET
+BT /F1 10 Tf 54 509 Td (reliable than static prompt folklore [17].) Tj ET
+BT /F1 10 Tf 54 490 Td (Another uncertainty is the optimal compression policy for long-running agents. MT-OSC,) Tj ET
+BT /F1 10 Tf 54 477 Td (AdaCoM, and related approaches show benefits, but they use different tasks, agents, and) Tj ET
+BT /F1 10 Tf 54 464 Td (state representations [8][9]. The safe generalization is to preserve task constraints and) Tj ET
+BT /F1 10 Tf 54 451 Td (evidence locators while pruning stale or redundant tokens, but exact thresholds should be) Tj ET
+BT /F1 10 Tf 54 438 Td (measured per workflow [8][9][16].) Tj ET
+BT /F2 14 Tf 54 411 Td (RECOMMENDATIONS) Tj ET
+BT /F2 12 Tf 54 378 Td (Immediate Actions) Tj ET
+BT /F1 10 Tf 54 354 Td (1. Create a context budget for every serious workflow. Define which tokens are reserved for) Tj ET
+BT /F1 10 Tf 54 341 Td (durable instructions, user request, retrieved evidence, conversation state, examples, tool) Tj ET
+BT /F1 10 Tf 54 328 Td (output, and final-answer budget [16][17]. This prevents context stuffing from silently) Tj ET
+BT /F1 10 Tf 54 315 Td (displacing the information the model needs most [13][14].) Tj ET
+BT /F1 10 Tf 54 296 Td (2. Separate instructions, data, examples, and outputs. Use clear sections or XML-like tags) Tj ET
+BT /F1 10 Tf 54 283 Td (for complex prompts because Anthropic reports that this reduces misinterpretation when) Tj ET
+BT /F1 10 Tf 54 270 Td (prompts mix multiple content types [17]. Use API role fields where available so durable) Tj ET
+BT /F1 10 Tf 54 257 Td (instructions are not blended with ordinary user or retrieved text [19].) Tj ET
+BT /F1 10 Tf 54 238 Td (3. Replace raw chat history with compiled state after a few turns. Preserve stable goals,) Tj ET
+BT /F1 10 Tf 54 225 Td (user constraints, decisions, open questions, and evidence locators, but remove obsolete) Tj ET
+BT /F1 10 Tf 54 212 Td (attempts and repeated explanations [6][8][9]. Keep the raw transcript for audit, not) Tj ET
+BT /F1 10 Tf 54 199 Td (necessarily for every model call [8][9].) Tj ET
+BT /F1 10 Tf 54 180 Td (4. Add a quote-first or evidence-first step for grounded tasks. Anthropic recommends asking) Tj ET
+BT /F1 10 Tf 54 167 Td (for relevant quotes before performing long-document tasks, and RAGTruth shows why claim-) Tj ET
+BT /F1 10 Tf 54 154 Td (level grounding remains necessary even with retrieved context [15][17].) Tj ET
+BT /F1 10 Tf 54 135 Td (5. Audit persistent prompt files for rot. Assign owners to AGENTS.md, CLAUDE.md,) Tj ET
+BT /F1 10 Tf 54 122 Td (.cursorrules, retrieval instructions, and system prompts, then check references against the) Tj ET
+BT /F1 10 Tf 54 109 Td (current codebase or knowledge base [20]. Stale persistent context should be treated like) Tj ET
+BT /F1 10 Tf 54 96 Td (stale documentation with production impact [20].) Tj ET
+BT /F2 12 Tf 54 72 Td (Near-Term Next Steps) Tj ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 21 0 R >>
+endobj
+23 0 obj
+<< /Length 4736 >>
+stream
+BT /F1 10 Tf 54 738 Td (Run paired evals in both single-turn and multi-turn form. Laban et al. show that multi-turn) Tj ET
+BT /F1 10 Tf 54 725 Td (presentation can cause a large performance drop even when the same task information is) Tj ET
+BT /F1 10 Tf 54 712 Td (ultimately present [6]. A useful eval suite should include buried facts, ambiguous follow-) Tj ET
+BT /F1 10 Tf 54 699 Td (ups, user corrections, distractor documents, and long-form grounded answers [2][6][22].) Tj ET
+BT /F1 10 Tf 54 680 Td (Instrument retrieval quality before answer quality. Log retrieved documents, scores,) Tj ET
+BT /F1 10 Tf 54 667 Td (reranker decisions, source dates, deduplication, and final context order [13][14][16]. When) Tj ET
+BT /F1 10 Tf 54 654 Td (an answer fails, first determine whether the right evidence was missing, buried,) Tj ET
+BT /F1 10 Tf 54 641 Td (contradicted, or present but unused [13][15].) Tj ET
+BT /F1 10 Tf 54 622 Td (Define model behavior for uncertainty. Use prompts and evals that reward "not enough) Tj ET
+BT /F1 10 Tf 54 609 Td (evidence" when the context is missing support, because SimpleQA frames calibrated non-) Tj ET
+BT /F1 10 Tf 54 596 Td (answering as part of ideal behavior [23]. This is especially important for RAG systems where) Tj ET
+BT /F1 10 Tf 54 583 Td (a retrieved passage can be topically related but not answer-bearing [13][15].) Tj ET
+BT /F2 12 Tf 54 559 Td (Further Research Needs) Tj ET
+BT /F1 10 Tf 54 535 Td (More public work is needed on context rot in real production agents. Treude and Baltes) Tj ET
+BT /F1 10 Tf 54 522 Td (provide an early software-development framing, but broader datasets for stale memory, stale) Tj ET
+BT /F1 10 Tf 54 509 Td (retrieval indexes, and stale system prompts would make mitigation more measurable [20].) Tj ET
+BT /F1 10 Tf 54 490 Td (More work is needed on evidence-preserving compression. AdaCoM and MT-OSC show that context) Tj ET
+BT /F1 10 Tf 54 477 Td (management can help, but factual applications need compression methods that preserve exact) Tj ET
+BT /F1 10 Tf 54 464 Td (provenance and allow dereferencing rather than trusting generated summaries alone) Tj ET
+BT /F1 10 Tf 54 451 Td ([8][9][15].) Tj ET
+BT /F1 10 Tf 54 432 Td (More work is needed on instruction priority beyond simple role hierarchies. ManyIH shows) Tj ET
+BT /F1 10 Tf 54 419 Td (that realistic agents can involve many privilege levels, and current models remain weak when) Tj ET
+BT /F1 10 Tf 54 406 Td (conflict scales [12]. Future systems likely need explicit policy metadata, source trust) Tj ET
+BT /F1 10 Tf 54 393 Td (labels, and evals for role conflict [11][12][19].) Tj ET
+BT /F2 14 Tf 54 366 Td (BIBLIOGRAPHY) Tj ET
+BT /F1 10 Tf 54 338 Td ([1] Liu, N. F., Lin, K., Hewitt, J., Paranjape, A., Bevilacqua, M., Petroni, F., and Liang,) Tj ET
+BT /F1 10 Tf 54 325 Td (P. \(2023\). "Lost in the Middle: How Language Models Use Long Contexts". arXiv.) Tj ET
+BT /F1 10 Tf 54 312 Td (https://arxiv.org/abs/2307.03172 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 293 Td ([2] Hsieh, C. P., Sun, S., Kriman, S., Acharya, S., Rekesh, D., Jia, F., Zhang, Y., and) Tj ET
+BT /F1 10 Tf 54 280 Td (Ginsburg, B. \(2024\). "RULER: What's the Real Context Size of Your Long-Context Language) Tj ET
+BT /F1 10 Tf 54 267 Td (Models?" arXiv. https://arxiv.org/abs/2404.06654 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 248 Td ([3] Modarressi, A., Deilamsalehy, H., Dernoncourt, F., Bui, T., Rossi, R. A., Yoon, S., and) Tj ET
+BT /F1 10 Tf 54 235 Td (Schutze, H. \(2025\). "NoLiMa: Long-Context Evaluation Beyond Literal Matching". arXiv.) Tj ET
+BT /F1 10 Tf 54 222 Td (https://arxiv.org/abs/2502.05167 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 203 Td ([4] Bai, Y., Tu, S., Zhang, J., Peng, H., Wang, X., Lv, X., Cao, S., Xu, J., Hou, L., Dong,) Tj ET
+BT /F1 10 Tf 54 190 Td (Y., and Tang, J. \(2024\). "LongBench v2: Towards Deeper Understanding and Reasoning on) Tj ET
+BT /F1 10 Tf 54 177 Td (Realistic Long-context Multitasks". arXiv. https://arxiv.org/abs/2412.15204 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 164 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 145 Td ([5] Wu, Y., Hee, M. S., Hu, Z., and Lee, R. K. W. \(2024\). "LongGenBench: Benchmarking Long-) Tj ET
+BT /F1 10 Tf 54 132 Td (Form Generation in Long Context LLMs". arXiv. https://arxiv.org/abs/2409.02076 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 119 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 100 Td ([6] Laban, P., Hayashi, H., Zhou, Y., and Neville, J. \(2025\). "LLMs Get Lost In Multi-Turn) Tj ET
+BT /F1 10 Tf 54 87 Td (Conversation". arXiv. https://arxiv.org/abs/2505.06120 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 68 Td ([7] Liu, G., Zhu, F., Feng, R., Ma, C., Wang, S., and Meng, G. \(2026\). "Intent Mismatch) Tj ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 23 0 R >>
+endobj
+25 0 obj
+<< /Length 4746 >>
+stream
+BT /F1 10 Tf 54 738 Td (Causes LLMs to Get Lost in Multi-Turn Conversation". arXiv. https://arxiv.org/abs/2602.07338) Tj ET
+BT /F1 10 Tf 54 725 Td (\(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 706 Td ([8] Singh, J., Tu, F., Ballesteros, M., Sun, W., Ghoshal, S., Yuan, M., Benajiba, Y., Ravi,) Tj ET
+BT /F1 10 Tf 54 693 Td (S., and Roth, D. \(2026\). "MT-OSC: Path for LLMs that Get Lost in Multi-Turn Conversation".) Tj ET
+BT /F1 10 Tf 54 680 Td (arXiv. https://arxiv.org/abs/2604.08782 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 661 Td ([9] Yi, L., Lei, R., Yao, L., Xie, Y., Li, Y., Zhang, W., Wei, Z., Li, Y., and Nie, J. Y.) Tj ET
+BT /F1 10 Tf 54 648 Td (\(2026\). "Learning Agent-Compatible Context Management for Long-Horizon Tasks". arXiv.) Tj ET
+BT /F1 10 Tf 54 635 Td (https://arxiv.org/abs/2605.30785 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 616 Td ([10] Xiao, G., Tian, Y., Chen, B., Han, S., and Lewis, M. \(2023\). "Efficient Streaming) Tj ET
+BT /F1 10 Tf 54 603 Td (Language Models with Attention Sinks". arXiv. https://arxiv.org/abs/2309.17453 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 590 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 571 Td ([11] Wallace, E., Xiao, K., Leike, R., Weng, L., Heidecke, J., and Beutel, A. \(2024\). "The) Tj ET
+BT /F1 10 Tf 54 558 Td (Instruction Hierarchy: Training LLMs to Prioritize Privileged Instructions". arXiv.) Tj ET
+BT /F1 10 Tf 54 545 Td (https://arxiv.org/abs/2404.13208 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 526 Td ([12] Zhang, J., Li, T., Jurayj, W., Zhan, H., Van Durme, B., and Khashabi, D. \(2026\). "Many-) Tj ET
+BT /F1 10 Tf 54 513 Td (Tier Instruction Hierarchy in LLM Agents". arXiv. https://arxiv.org/abs/2604.09443) Tj ET
+BT /F1 10 Tf 54 500 Td (\(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 481 Td ([13] Jin, B., Yoon, J., Han, J., and Arik, S. O. \(2024\). "Long-Context LLMs Meet RAG:) Tj ET
+BT /F1 10 Tf 54 468 Td (Overcoming Challenges for Long Inputs in RAG". arXiv. https://arxiv.org/abs/2410.05983) Tj ET
+BT /F1 10 Tf 54 455 Td (\(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 436 Td ([14] Leng, Q., Portes, J., Havens, S., Zaharia, M., and Carbin, M. \(2024\). "Long Context RAG) Tj ET
+BT /F1 10 Tf 54 423 Td (Performance of Large Language Models". arXiv. https://arxiv.org/abs/2411.03538 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 410 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 391 Td ([15] Niu, C., Wu, Y., Zhu, J., Xu, S., Shum, K., Zhong, R., Song, J., and Zhang, T. \(2023\).) Tj ET
+BT /F1 10 Tf 54 378 Td ("RAGTruth: A Hallucination Corpus for Developing Trustworthy Retrieval-Augmented Language) Tj ET
+BT /F1 10 Tf 54 365 Td (Models". arXiv. https://arxiv.org/abs/2401.00396 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 346 Td ([16] Mei, L., Yao, J., Ge, Y., Wang, Y., Bi, B., Cai, Y., Liu, J., Li, M., Li, Z., Zhang,) Tj ET
+BT /F1 10 Tf 54 333 Td (D., Zhou, C., Mao, J., Xia, T., Guo, J., and Liu, S. \(2025\). "A Survey of Context) Tj ET
+BT /F1 10 Tf 54 320 Td (Engineering for Large Language Models". arXiv. https://arxiv.org/abs/2507.13334 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 307 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 288 Td ([17] Anthropic \(2026\). "Prompting best practices". Claude API Docs.) Tj ET
+BT /F1 10 Tf 54 275 Td (https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-) Tj ET
+BT /F1 10 Tf 54 262 Td (best-practices \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 243 Td ([18] Google Cloud \(2026\). "Introduction to prompting". Gemini Enterprise Agent Platform) Tj ET
+BT /F1 10 Tf 54 230 Td (Documentation. https://docs.cloud.google.com/gemini-enterprise-agent-) Tj ET
+BT /F1 10 Tf 54 217 Td (platform/models/prompts/introduction-prompt-design \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 198 Td ([19] OpenAI \(2026\). "Prompt engineering". OpenAI API Documentation.) Tj ET
+BT /F1 10 Tf 54 185 Td (https://developers.openai.com/api/docs/guides/prompt-engineering \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 166 Td ([20] Treude, C., and Baltes, S. \(2026\). "Context Rot in AI-Assisted Software Development:) Tj ET
+BT /F1 10 Tf 54 153 Td (Repurposing Documentation Consistency for AI Configuration Artifacts". arXiv.) Tj ET
+BT /F1 10 Tf 54 140 Td (https://arxiv.org/abs/2606.09090 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 121 Td ([21] Park, J., Atarashi, K., Takeuchi, K., and Kashima, H. \(2025\). "Emulating Retrieval) Tj ET
+BT /F1 10 Tf 54 108 Td (Augmented Generation via Prompt Engineering for Enhanced Long Context Comprehension in) Tj ET
+BT /F1 10 Tf 54 95 Td (LLMs". arXiv. https://arxiv.org/abs/2502.12462 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 76 Td ([22] Jacovi, A., Wang, A., Alberti, C., Tao, C., Lipovetz, J., Olszewska, K., Haas, L., Liu,) Tj ET
+endstream
+endobj
+26 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 25 0 R >>
+endobj
+27 0 obj
+<< /Length 4306 >>
+stream
+BT /F1 10 Tf 54 738 Td (M., Keating, N., Bloniarz, A., Saroufim, C., Fry, C., Marcus, D., Kukliansky, D., Tomar, G.) Tj ET
+BT /F1 10 Tf 54 725 Td (S., Swirhun, J., Xing, J., Wang, L., Gurumurthy, M., Aaron, M., Ambar, M., Fellinger, R.,) Tj ET
+BT /F1 10 Tf 54 712 Td (Wang, R., Zhang, Z., Goldshtein, S., and Das, D. \(2025\). "The FACTS Grounding Leaderboard:) Tj ET
+BT /F1 10 Tf 54 699 Td (Benchmarking LLMs' Ability to Ground Responses to Long-Form Input". arXiv.) Tj ET
+BT /F1 10 Tf 54 686 Td (https://arxiv.org/abs/2501.03200 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 667 Td ([23] Wei, J., Karina, N., Chung, H. W., Jiao, Y. J., Papay, S., Glaese, A., Schulman, J.,) Tj ET
+BT /F1 10 Tf 54 654 Td (and Fedus, W. \(2024\). "Measuring short-form factuality in large language models". arXiv.) Tj ET
+BT /F1 10 Tf 54 641 Td (https://arxiv.org/abs/2411.04368 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 622 Td ([24] Lee, J., Chen, A., Dai, Z., Dua, D., Sachan, D. S., Boratko, M., Luan, Y., Arnold, S.) Tj ET
+BT /F1 10 Tf 54 609 Td (M. R., Perot, V., Dalmia, S., Hu, H., Lin, X., Pasupat, P., Amini, A., Cole, J. R., Riedel,) Tj ET
+BT /F1 10 Tf 54 596 Td (S., Naim, I., Chang, M. W., and Guu, K. \(2024\). "Can Long-Context Language Models Subsume) Tj ET
+BT /F1 10 Tf 54 583 Td (Retrieval, RAG, SQL, and More?" arXiv. https://arxiv.org/abs/2406.13121 \(Retrieved:) Tj ET
+BT /F1 10 Tf 54 570 Td (2026-06-21\)) Tj ET
+BT /F1 10 Tf 54 551 Td ([25] Li, X., Cao, Y., Ma, Y., and Sun, A. \(2024\). "Long Context vs. RAG for LLMs: An) Tj ET
+BT /F1 10 Tf 54 538 Td (Evaluation and Revisits". arXiv. https://arxiv.org/abs/2501.01880 \(Retrieved: 2026-06-21\)) Tj ET
+BT /F2 14 Tf 54 511 Td (APPENDIX: METHODOLOGY) Tj ET
+BT /F2 12 Tf 54 478 Td (Research Process) Tj ET
+BT /F1 10 Tf 54 454 Td (Phase 1 scoped the question around degradation mechanisms and mitigations, with the) Tj ET
+BT /F1 10 Tf 54 441 Td (assumption that the target audience is technical and wants operational guidance. Phase 2) Tj ET
+BT /F1 10 Tf 54 428 Td (planned source clusters across long-context benchmarks, multi-turn conversation studies, RAG) Tj ET
+BT /F1 10 Tf 54 415 Td (and context-management papers, instruction hierarchy, and official prompt-engineering docs.) Tj ET
+BT /F1 10 Tf 54 402 Td (Phase 3 retrieved sources with web search because the topic is fast-moving and current) Tj ET
+BT /F1 10 Tf 54 389 Td (sources were needed. Phase 4 triangulated major claims across independent source clusters.) Tj ET
+BT /F1 10 Tf 54 376 Td (Phase 4.5 refined the outline after the evidence showed that output-side long-form) Tj ET
+BT /F1 10 Tf 54 363 Td (degradation and persistent context rot deserved separate treatment. Phase 5 synthesized the) Tj ET
+BT /F1 10 Tf 54 350 Td (report around six findings.) Tj ET
+BT /F2 12 Tf 54 326 Td (Sources Consulted) Tj ET
+BT /F1 10 Tf 54 302 Td (Total cited sources: 25.) Tj ET
+BT /F1 10 Tf 54 283 Td (Source types: academic and benchmark papers: 20; official platform documentation: 3; applied) Tj ET
+BT /F1 10 Tf 54 270 Td (software-engineering research paper: 1; comparative evaluation paper: 1.) Tj ET
+BT /F1 10 Tf 54 251 Td (Temporal coverage: the cited work ranges from 2023 through 2026, with emphasis on 2024-2026) Tj ET
+BT /F1 10 Tf 54 238 Td (because long-context and multi-turn degradation research is moving quickly.) Tj ET
+BT /F2 12 Tf 54 214 Td (Verification Approach) Tj ET
+BT /F1 10 Tf 54 190 Td (Major claims were supported by at least three independent source clusters where possible.) Tj ET
+BT /F1 10 Tf 54 177 Td (Long-context degradation was triangulated from Lost in the Middle, RULER, NoLiMa, LongBench) Tj ET
+BT /F1 10 Tf 54 164 Td (v2, and LongGenBench [1][2][3][4][5]. Multi-turn degradation was triangulated from Laban et) Tj ET
+BT /F1 10 Tf 54 151 Td (al., intent-mismatch work, MT-OSC, and AdaCoM [6][7][8][9]. Mitigations were triangulated) Tj ET
+BT /F1 10 Tf 54 138 Td (from context engineering, RAG studies, instruction hierarchy, grounding benchmarks, and) Tj ET
+BT /F1 10 Tf 54 125 Td (official platform docs [11][13][15][16][17][18][19][22].) Tj ET
+BT /F2 12 Tf 54 101 Td (Claims-Evidence Table) Tj ET
+BT /F1 8 Tf 54 77 Td (| Claim ID | Major Claim | Evidence Type | Supporting Sources | Confidence |) Tj ET
+BT /F1 8 Tf 54 67 Td (|---|---|---|---|---|) Tj ET
+endstream
+endobj
+28 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 27 0 R >>
+endobj
+29 0 obj
+<< /Length 1746 >>
+stream
+BT /F1 8 Tf 54 738 Td (| C1 | Long context windows do not guarantee reliable use of all supplied tokens. | Benchmarks | [1], [2], [3], [4] |) Tj ET
+BT /F1 8 Tf 54 728 Td (High |) Tj ET
+BT /F1 8 Tf 54 718 Td (| C2 | More retrieved context can help and then hurt when hard negatives and irrelevant passages enter the prompt. | RAG) Tj ET
+BT /F1 8 Tf 54 708 Td (studies | [13], [14], [15] | High |) Tj ET
+BT /F1 8 Tf 54 698 Td (| C3 | Multi-turn conversations can degrade even when the needed task information appears somewhere in the dialogue. |) Tj ET
+BT /F1 8 Tf 54 688 Td (Multi-turn simulations and mitigation papers | [6], [7], [8], [9] | High |) Tj ET
+BT /F1 8 Tf 54 678 Td (| C4 | Instruction ambiguity and instruction conflict are distinct reliability hazards. | Instruction hierarchy papers) Tj ET
+BT /F1 8 Tf 54 668 Td (and platform docs | [11], [12], [17], [18], [19] | High |) Tj ET
+BT /F1 8 Tf 54 658 Td (| C5 | Long-form generation has its own degradation modes beyond input retrieval. | Generation and grounding benchmarks) Tj ET
+BT /F1 8 Tf 54 648 Td (| [5], [22], [23] | Medium-High |) Tj ET
+BT /F1 8 Tf 54 638 Td (| C6 | Context engineering is the dominant mitigation pattern across research and production guidance. | Survey, RAG,) Tj ET
+BT /F1 8 Tf 54 628 Td (agent, and documentation sources | [8], [9], [13], [16], [17], [18], [19] | High |) Tj ET
+BT /F2 12 Tf 54 607 Td (Report Metadata) Tj ET
+BT /F1 10 Tf 54 583 Td (Research Mode: Standard.) Tj ET
+BT /F1 10 Tf 54 564 Td (Total Sources: 25.) Tj ET
+BT /F1 10 Tf 54 545 Td (Approximate Word Count: 5,900.) Tj ET
+BT /F1 10 Tf 54 526 Td (Generated: 2026-06-21 local shell date.) Tj ET
+BT /F1 10 Tf 54 507 Td (Validation Status: Automated validation run after packaging.) Tj ET
+endstream
+endobj
+30 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 29 0 R >>
+endobj
+xref
+0 31
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000205 00000 n 
+0000000275 00000 n 
+0000000350 00000 n 
+0000004770 00000 n 
+0000004906 00000 n 
+0000009739 00000 n 
+0000009875 00000 n 
+0000015327 00000 n 
+0000015464 00000 n 
+0000020995 00000 n 
+0000021133 00000 n 
+0000026628 00000 n 
+0000026766 00000 n 
+0000031982 00000 n 
+0000032120 00000 n 
+0000037005 00000 n 
+0000037143 00000 n 
+0000041756 00000 n 
+0000041894 00000 n 
+0000046473 00000 n 
+0000046611 00000 n 
+0000051399 00000 n 
+0000051537 00000 n 
+0000056335 00000 n 
+0000056473 00000 n 
+0000060831 00000 n 
+0000060969 00000 n 
+0000062767 00000 n 
+trailer
+<< /Size 31 /Root 1 0 R >>
+startxref
+62905
+%%EOF

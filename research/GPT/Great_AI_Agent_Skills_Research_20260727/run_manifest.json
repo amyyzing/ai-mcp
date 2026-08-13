@@ -1,0 +1,35 @@
+{
+  "version": "3.0.0",
+  "query": "What makes a great AI-agent/Codex skill?",
+  "mode": "standard",
+  "started_at": "2026-07-27T18:27:49.964161+00:00",
+  "finished_at": "2026-07-27T18:42:41Z",
+  "assumptions": [
+    "Skill means a reusable filesystem-based AI-agent skill package, with Codex as the primary implementation context.",
+    "The audience is technical and wants transferable design guidance rather than a tutorial for one vendor.",
+    "Current official runtime documentation is authoritative for product behavior; cross-source research supports general engineering implications."
+  ],
+  "provider_config": {
+    "primary": "OpenAI Codex manual helper and web search",
+    "scholarly": "arXiv, peer-reviewed proceedings, and government research",
+    "retrieved_at": "2026-07-27"
+  },
+  "report_dir": "research/GPT/Great_AI_Agent_Skills_Research_20260727",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "research_report_20260727_great_ai_agent_skills.md",
+    "html": "research_report_20260727_great_ai_agent_skills.html",
+    "pdf": "research_report_20260727_great_ai_agent_skills.pdf"
+  },
+  "quality_gates": {
+    "report_validation": "passed",
+    "citation_urls_verified": "24/24",
+    "unsupported_factual_claims": 0,
+    "html_validation": "passed",
+    "pdf_pages": 18,
+    "pdf_visual_review": "passed"
+  },
+  "continuation": null
+}

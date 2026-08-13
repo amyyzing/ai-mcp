@@ -1,0 +1,26 @@
+{
+  "version": "3.0.0",
+  "query": "Research how LLM outputs degrade over long or unclear interactions, including context rot, long-context failures, instruction ambiguity, token bloat, and common mitigations.",
+  "mode": "standard",
+  "started_at": "2026-06-22T01:13:51.857888+00:00",
+  "finished_at": "2026-06-22T01:22:35Z",
+  "assumptions": [
+    "Technical audience; focus on applied LLM systems rather than model training internals alone.",
+    "Use 'context rot' for both stale persistent context artifacts and runtime context pollution, with the distinction stated in the report.",
+    "Prefer primary academic sources and official platform documentation for major claims."
+  ],
+  "provider_config": {
+    "primary": "search-cli",
+    "scholarly": null
+  },
+  "report_dir": "/research/LLM_Output_Degradation_Research_20260621",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "research_report_20260621_llm_output_degradation.md",
+    "html": "research_report_20260621_llm_output_degradation.html",
+    "pdf": "research_report_20260621_llm_output_degradation.pdf"
+  },
+  "continuation": null
+}

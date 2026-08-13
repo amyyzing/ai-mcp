@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roblox MCP"
+  short_description: "Use Roblox MCP tools safely and efficiently"
+  default_prompt: "Use $roblox-mcp to inspect and debug the connected Roblox client."

@@ -1,0 +1,22 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { assetsDir } from "../../paths.js";
+
+const assetPath = path.join(
+  assetsDir,
+  "dashboard",
+  "vendor",
+  "highlight.js",
+  "github-dark.min.css"
+);
+let cached: Buffer | null = null;
+
+export function GET(_req: IncomingMessage, res: ServerResponse): void {
+  cached ??= fs.readFileSync(assetPath);
+  res.writeHead(200, {
+    "Content-Type": "text/css; charset=utf-8",
+    "Cache-Control": "public, max-age=86400",
+  });
+  res.end(cached);
+}
