@@ -56,6 +56,12 @@ while true do
         require("./handlers/inspect-instance"),
         require("./handlers/script-index"),
         require("./handlers/search-gc"),
+        require("./handlers/runtime-capabilities"),
+        require("./handlers/runtime-handles"),
+        require("./handlers/runtime-inventory"),
+        require("./handlers/runtime-extended"),
+        require("./handlers/gc-explorer"),
+        require("./handlers/signal-connections"),
         require("./handlers/unified-input"),
         require("./handlers/wait-for-event"),
     }

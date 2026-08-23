@@ -32,6 +32,26 @@ import { formatToolText } from "../../../tools/factory.js";
 import { buildListScriptsResult } from "../../../tools/impl/advanced/list-scripts.js";
 import { compileSafeSearchRegExp } from "../../../tools/safe-regex.js";
 import { remoteSpyInputSchema } from "../../../tools/impl/remote-spy/remote-spy.js";
+import {
+  callbackInspectInputSchema,
+  executorCapabilitiesInputSchema,
+  gcDiffInputSchema,
+  gcQueryInputSchema,
+  gcSnapshotInputSchema,
+  gcStatisticsInputSchema,
+  propertyAccessInputSchema,
+  runtimeActorsInputSchema,
+  runtimeCallInputSchema,
+  runtimeEnvironmentsInputSchema,
+  runtimeHandlesInputSchema,
+  runtimeInspectInputSchema,
+  runtimeReadInputSchema,
+  runtimeReferencesInputSchema,
+  runtimeReleaseInputSchema,
+  runtimeScriptsInputSchema,
+  runtimeWriteInputSchema,
+  signalConnectionsInputSchema,
+} from "../../../tools/impl/runtime/schemas.js";
 
 
 interface ToolRequest {
@@ -42,6 +62,27 @@ interface ToolRequest {
 
 const DEFAULT_SCRIPT_MAX_LINES = 80;
 const HARD_SCRIPT_MAX_LINES = 2000;
+
+const runtimeDispatchSchemas = {
+  "executor-capabilities": executorCapabilitiesInputSchema,
+  "runtime-inspect": runtimeInspectInputSchema,
+  "runtime-read": runtimeReadInputSchema,
+  "runtime-write": runtimeWriteInputSchema,
+  "runtime-call": runtimeCallInputSchema,
+  "runtime-release": runtimeReleaseInputSchema,
+  "runtime-handles": runtimeHandlesInputSchema,
+  "gc-snapshot": gcSnapshotInputSchema,
+  "gc-query": gcQueryInputSchema,
+  "gc-diff": gcDiffInputSchema,
+  "gc-statistics": gcStatisticsInputSchema,
+  "runtime-references": runtimeReferencesInputSchema,
+  "runtime-environments": runtimeEnvironmentsInputSchema,
+  "runtime-scripts": runtimeScriptsInputSchema,
+  "signal-connections": signalConnectionsInputSchema,
+  "property-access": propertyAccessInputSchema,
+  "callback-inspect": callbackInspectInputSchema,
+  "runtime-actors": runtimeActorsInputSchema,
+} as const;
 
 function jsonOk(res: ServerResponse, data: unknown): void {
   res.writeHead(200, { "Content-Type": "application/json" });
@@ -434,6 +475,43 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
     }
 
     // ── Client-dispatched tools ───────────────────────────────────────────────
+    const runtimeSchema = runtimeDispatchSchemas[type as keyof typeof runtimeDispatchSchemas];
+    if (runtimeSchema) {
+      const parsed = runtimeSchema.safeParse({ ...params, clientId: target.clientId });
+      if (!parsed.success) {
+        return jsonErr(
+          res,
+          `Invalid ${type} request: ${parsed.error.issues[0]?.message ?? "schema validation failed"}`
+        );
+      }
+      const {
+        clientId: _parsedClientId,
+        maxOutputChars: _maxOutputChars,
+        ...runtimeData
+      } = parsed.data as Record<string, unknown>;
+      const longRunning = type === "gc-snapshot" || type === "runtime-call" || type === "runtime-references";
+      const dispatched = await dispatchClientRequest(
+        type,
+        runtimeData,
+        target.clientId,
+        longRunning ? 120_000 : 60_000
+      );
+      if (dispatched.error) return jsonErr(res, dispatched.error);
+      const response = dispatched.response!;
+      if (response.error) return jsonErr(res, response.error);
+      return jsonClientOk({
+        result: resultText(
+          response.output ?? "No output returned.",
+          params,
+          "Use the tool's filters, cursor, and limit fields to request a narrower runtime page."
+        ),
+        structuredContent:
+          response.structured && typeof response.structured === "object"
+            ? response.structured
+            : null,
+      });
+    }
+
     const dispatchTypes: Record<string, string> = {
       "get-data-by-code": "get-data-by-code",
       "execute": "execute",

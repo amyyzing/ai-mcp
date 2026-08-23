@@ -29,6 +29,8 @@ Use it to see connected Roblox clients, inspect scripts, run tools, view server 
 - **Controlled Script Indexing** — Start, stop, inspect, or fully resync source mapping on demand; expensive initial indexing is opt-in.
 - **Instance Search** — CSS-like selectors and hierarchy trees.
 - **Runtime Diagnostics** — Inspect transport latency, executor capabilities, decompiler health, and live mapping state.
+- **Runtime Object Debugger** — Keep generation-scoped handles to GC objects, closures, tables, threads, Instances, callbacks, signals, and connections; inspect or manipulate them without flattening everything into text.
+- **GC Snapshots and References** — Build reusable GC indexes, query and diff snapshots, compute statistics, and follow table/upvalue/prototype/metatable reference edges.
 - **Bounded Runtime Search & Events** — First-match GC searches plus bounded waits; console and non-selector instance journals support resumable cursors.
 - **Bundled Remote Spy** — Inspect, block, and filter Remotes/Bindables without executing a separate script. The connector capability-probes executor hooks and never downloads spy code.
 - **Unified Input** — Keyboard, text, mouse, scroll, prompt, click-detector, and touch interaction.
@@ -166,6 +168,18 @@ http://localhost:16384/
 ### Bundled remote spy
 
 The `remote-spy` MCP tool starts its internal spy on first use; users do not need to execute Cobalt separately. Run `operation=status` to see the executor capabilities that were detected. Outgoing namecall capture and blocking require `hookmetamethod` plus `getnamecallmethod`. Incoming `RemoteEvent`, `UnreliableRemoteEvent`, and `BindableEvent` calls are observed passively, so incoming calls can be ignored but not blocked; incoming function callbacks are not intercepted. If a compatible external Cobalt instance is already running, the MCP uses it instead of installing a second hook.
+
+### Executor runtime debugger
+
+The runtime tools capability-probe each executor rather than assuming one API set. A practical deep-inspection flow is:
+
+1. `executor-capabilities`
+2. `gc-snapshot` with `operation=create`
+3. `gc-query` with narrow criteria
+4. `runtime-inspect`, `runtime-read`, or `runtime-references` on returned handles
+5. `runtime-release` when retained objects are no longer needed
+
+Additional tools expose runtime environments and loaded/running script inventories, Actor threads, callback properties, hidden/non-scriptable properties, and `getconnections` metadata/control. Tagged values preserve Roblox datatypes, cycles, shared table references, non-finite numbers, and non-serializable objects through handles. GC snapshot handles are weak until returned by a query, so creating a snapshot does not itself keep every discovered object alive or corrupt later diffs.
 
 ## Community
 

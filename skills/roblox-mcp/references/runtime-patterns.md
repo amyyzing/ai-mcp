@@ -25,6 +25,14 @@ workspace.CurrentCamera.FieldOfView = 90
 
 Execution now reports whether the top-level chunk completed or failed, but that acknowledgement is not proof that the intended in-game state changed. Follow it with a specialized inspection tool or a small `get-data-by-code` probe. A console read is appropriate only when logs themselves are the evidence.
 
+## Reuse GC objects through runtime handles
+
+Use `search-gc` when one compact first match answers the question. For investigation across several calls, start with `executor-capabilities`, create one bounded `gc-snapshot`, then page it with `gc-query`. Query results contain generation-scoped `rh_...` handles that can be passed to `runtime-inspect`, `runtime-read`, `runtime-write`, `runtime-call`, or `runtime-references` without trying to serialize the underlying closure/table/thread.
+
+Keep the snapshot scan and query filters as narrow as the task allows. Treat `staleHandles` as a normal indication that a weakly indexed object was collected, not as an empty result or transport failure. Use `gc-diff` only on snapshots from the same live connector generation, and call `runtime-release` for pinned handles that are no longer useful.
+
+Use `runtime-handles` when diagnosing retained-object growth. Table pages are explicitly unstable if the live table mutates between calls, so verify important fields with a focused `runtime-read` before changing them.
+
 ## Filter garbage-collected values with `filtergc`
 
 Prefer the MCP `search-gc` tool because it bounds criteria, returns only the first match, caps table summaries, and bounds compatibility iteration. The executor may still allocate or traverse its own full GC snapshot internally. When a predicate cannot be expressed by that tool, prefer raw `filtergc` over a `getgc` loop and provide every known criterion:

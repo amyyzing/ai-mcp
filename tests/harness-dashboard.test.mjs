@@ -657,7 +657,8 @@ test("packaged Roblox MCP skill enforces modern inspection and execution default
 
   assert.match(skill, /^---\r?\nname: roblox-mcp\r?\n/m);
   assert.match(skill, /live tool schemas as the source of truth/);
-  assert.match(skill, /Use `search-gc` for a compact first-match garbage-collector search/);
+  assert.match(skill, /Use `search-gc` for one compact first match/);
+  assert.match(skill, /Use `gc-snapshot` \+ `gc-query`/);
   assert.match(skill, /Use `search-instances` for filtered instance discovery/);
   assert.match(skill, /Use `get-data-by-code` when the task needs values returned from Luau/);
   assert.match(skill, /Use `execute` or `execute-file` only for intentional side effects/);

@@ -59,6 +59,1570 @@ return function(b)
 return Encode(b,{},0)
 end end function a.a():typeof(__modImpl())local b=a.cache.a if not b then b={c=__modImpl()}a.cache.a=b end return b.c end end do local function __modImpl()
 
+local b={}
+b.__index=b
+
+local function ClampInteger(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.max(e,math.min(f,math.floor(g)))
+end
+
+local function Classify(c)
+local d=typeof(c)
+if d=="table"or d=="function"or d=="thread"then
+return d
+end
+if d=="Instance"then return"instance"end
+if d=="RBXScriptConnection"then return"connection"end
+if d=="RBXScriptSignal"then return"signal"end
+if d=="userdata"then return"userdata"end
+return string.lower(d)
+end
+
+function b.new(c)
+c=c or{}
+local d=tostring(c.RegistryId or"runtime")
+d=string.gsub(d,"[^%w]","")
+if d==""then d="runtime"end
+
+return setmetatable({
+registryId=string.sub(d,1,16),
+generation=1,
+nextId=0,
+entries={},
+activeCount=0,
+order={},
+orderCursor=1,
+reverse=setmetatable({},{__mode="k"}),
+weakValues=setmetatable({},{__mode="v"}),
+strongValues={},
+maxHandles=ClampInteger(c.MaxHandles,50000,100,200000),
+defaultTtlSeconds=ClampInteger(c.DefaultTtlSeconds,1800,30,7200),
+clock=c.Clock or os.clock,
+created=0,
+released=0,
+expired=0,
+evicted=0,
+collected=0,
+lastSweepAt=-math.huge,
+sweepIntervalSeconds=1,
+},b)
+end
+
+function b._now(c)
+return c.clock()
+end
+
+function b._remove(c,d,e)
+local f=c.entries[d]
+if f==nil then return false end
+c.entries[d]=nil
+c.activeCount=math.max(0,c.activeCount-1)
+local g=c.strongValues[d]or c.weakValues[d]
+c.strongValues[d]=nil
+c.weakValues[d]=nil
+if g~=nil and c.reverse[g]==d then
+c.reverse[g]=nil
+end
+if e=="released"then c.released+=1 end
+if e=="expired"then c.expired+=1 end
+if e=="evicted"then c.evicted+=1 end
+if e=="collected"then c.collected+=1 end
+return true
+end
+
+function b.Sweep(c,d)
+local e=c:_now()
+if d~=true and e-c.lastSweepAt<c.sweepIntervalSeconds then return 0 end
+c.lastSweepAt=e
+local f=0
+for g,h in c.entries do
+if c.strongValues[g]==nil and c.weakValues[g]==nil then
+if c:_remove(g,"collected")then f+=1 end
+elseif h.expiresAt<=e then
+if c:_remove(g,"expired")then f+=1 end
+end
+end
+if#c.order>c.maxHandles*2 and#c.order>c.activeCount*2 then
+local g={}
+for h=c.orderCursor,#c.order do
+local i=c.order[h]
+if c.entries[i]~=nil then table.insert(g,i)end
+end
+c.order=g
+c.orderCursor=1
+end
+return f
+end
+
+function b._count(c)
+return c.activeCount
+end
+
+function b._evictOldest(c)
+while c.orderCursor<=#c.order do
+local d=c.order[c.orderCursor]
+c.orderCursor+=1
+if c.entries[d]~=nil then
+c:_remove(d,"evicted")
+return true
+end
+end
+return false
+end
+
+function b.Register(c,d,e,f,g,h)
+assert(d~=nil,"Cannot create a runtime handle for nil.")
+c:Sweep()
+
+local i=c.reverse[d]
+local j=i and c.entries[i]or nil
+if j then
+local k=c:_now()
+j.lastAccess=k
+j.expiresAt=k+ClampInteger(g,c.defaultTtlSeconds,30,7200)
+if f~=nil then j.metadata=f end
+if h~=false then
+c.strongValues[i]=d
+j.pinned=true
+end
+return i,j
+end
+
+while c:_count()>=c.maxHandles do
+assert(c:_evictOldest(),"Runtime handle registry is full and could not evict an entry.")
+end
+
+c.nextId+=1
+local k=string.format("rh_%s_%d_%d",c.registryId,c.generation,c.nextId)
+local l=c:_now()
+local m={
+handle=k,
+kind=e or Classify(d),
+generation=c.generation,
+createdAt=l,
+lastAccess=l,
+expiresAt=l+ClampInteger(g,c.defaultTtlSeconds,30,7200),
+metadata=f,
+pinned=h~=false,
+}
+c.entries[k]=m
+c.activeCount+=1
+table.insert(c.order,k)
+c.weakValues[k]=d
+if h~=false then c.strongValues[k]=d end
+c.reverse[d]=k
+c.created+=1
+return k,m
+end
+
+function b.Resolve(c,d,e,f)
+assert(type(d)=="string"and d~="","A runtime handle is required.")
+c:Sweep()
+local g=c.entries[d]
+assert(g~=nil,"Runtime handle is missing, expired, released, or belongs to another connector generation.")
+local h=c.strongValues[d]or c.weakValues[d]
+if h==nil then
+c:_remove(d,"collected")
+error"Runtime object was garbage-collected before this handle was pinned."
+end
+if e~=nil then
+if type(e)=="table"then
+local i=false
+for j,k in e do
+if g.kind==k then i=true break end
+end
+assert(i,"Runtime handle kind is "..g.kind..", not one of the requested kinds.")
+else
+assert(g.kind==e,"Runtime handle kind is "..g.kind..", not "..tostring(e)..".")
+end
+end
+local i=c:_now()
+g.lastAccess=i
+g.expiresAt=i+c.defaultTtlSeconds
+if f~=false then
+c.strongValues[d]=h
+g.pinned=true
+end
+return h,g
+end
+
+function b.Pin(c,d)
+local e,f=c:Resolve(d,nil,true)
+return e,f
+end
+
+function b.Unpin(c,d)
+local e=c.entries[d]
+if not e then return false end
+c.strongValues[d]=nil
+e.pinned=false
+return true
+end
+
+function b.Describe(c,d)local
+e, f=c:Resolve(d)
+return{
+handle=f.handle,
+kind=f.kind,
+generation=f.generation,
+ageSeconds=math.max(0,c:_now()-f.createdAt),
+idleSeconds=math.max(0,c:_now()-f.lastAccess),
+expiresInSeconds=math.max(0,f.expiresAt-c:_now()),
+pinned=f.pinned==true,
+metadata=f.metadata,
+}
+end
+
+function b.Release(c,d)
+return c:_remove(d,"released")
+end
+
+function b.ReleaseMany(c,d)
+local e=0
+local f=0
+for g,h in d or{}do
+if type(h)=="string"and c:Release(h)then
+e+=1
+else
+f+=1
+end
+end
+return e,f
+end
+
+function b.List(c,d,e,f)
+c:Sweep(true)
+d=ClampInteger(d,0,0,1000000000)
+e=ClampInteger(e,50,1,200)
+local g={}
+for h,i in c.entries do
+if f==nil or i.kind==f then
+table.insert(g,{handle=h,entry=i})
+end
+end
+table.sort(g,function(h,i)return h.handle<i.handle end)
+
+local h={}
+local i=math.min(#g,d+e)
+for j=d+1,i do
+local k=g[j]
+table.insert(h,{
+handle=k.handle,
+kind=k.entry.kind,
+generation=k.entry.generation,
+ageSeconds=math.max(0,c:_now()-k.entry.createdAt),
+expiresInSeconds=math.max(0,k.entry.expiresAt-c:_now()),
+pinned=k.entry.pinned==true,
+metadata=k.entry.metadata,
+})
+end
+return{
+total=#g,
+cursor=d,
+nextCursor=i<#g and i or nil,
+handles=h,
+}
+end
+
+function b.Stats(c)
+c:Sweep(true)
+local d={}
+local e=0
+local f=0
+for g,h in c.entries do
+e+=1
+if h.pinned then f+=1 end
+d[h.kind]=(d[h.kind]or 0)+1
+end
+return{
+registryId=c.registryId,
+generation=c.generation,
+active=e,
+pinned=f,
+weak=e-f,
+maximum=c.maxHandles,
+defaultTtlSeconds=c.defaultTtlSeconds,
+byKind=d,
+lifetime={
+created=c.created,
+released=c.released,
+expired=c.expired,
+evicted=c.evicted,
+collected=c.collected,
+},
+}
+end
+
+function b.RotateGeneration(c)
+for d in c.entries do c:_remove(d,"released")end
+c.generation+=1
+c.nextId=0
+c.order={}
+c.orderCursor=1
+return c.generation
+end
+
+b.Classify=Classify
+
+return b end function a.b():typeof(__modImpl())local b=a.cache.b if not b then b={c=__modImpl()}a.cache.b=b end return b.c end end do local function __modImpl()
+
+
+
+local b={}
+
+local c=100
+local d=2000
+
+local function Trim(e)
+return(string.gsub(string.gsub(e,"^%s+",""),"%s+$",""))
+end
+
+local function IsIdentifier(e)
+return string.match(e,"^[%a_][%w_]*$")~=nil
+end
+
+local function DecodeEscape(e)
+if e=="n"then return"\n"end
+if e=="r"then return"\r"end
+if e=="t"then return"\t"end
+if e=="b"then return"\b"end
+if e=="f"then return"\f"end
+return e
+end
+
+local function ParseQuotedSegment(e,f)
+local g=string.sub(e,f,f)
+assert(g=='"'or g=="'","Bracket segments must use a quoted child name.")
+f+=1
+
+local h={}
+local i=false
+while f<=#e do
+local j=string.sub(e,f,f)
+if j==g then
+i=true
+f+=1
+break
+end
+if j=="\\"then
+f+=1
+assert(f<=#e,"Instance path ends inside an escape sequence.")
+j=DecodeEscape(string.sub(e,f,f))
+end
+table.insert(h,j)
+f+=1
+end
+assert(i,"Unterminated quoted instance-path segment.")
+return table.concat(h),f
+end
+
+local function ParsePath(e)
+assert(type(e)=="string","Instance path must be a string.")
+e=Trim(e)
+assert(e~="","Instance path cannot be empty.")
+assert(#e<=d,"Instance path is too long.")
+
+local f
+local g
+if string.sub(e,1,4)=="game"then
+local h=string.sub(e,5,5)
+assert(h==""or h=="."or h=="[","Path root must be exactly game or workspace.")
+f=game
+g=5
+elseif string.sub(e,1,9)=="workspace"then
+local h=string.sub(e,10,10)
+assert(h==""or h=="."or h=="[","Path root must be exactly game or workspace.")
+f=workspace
+g=10
+else
+error"Instance path must be rooted at game or workspace."
+end
+
+local h={}
+while g<=#e do
+assert(#h<c,"Instance path has too many segments.")
+local i=string.sub(e,g,g)
+if i=="."then
+g+=1
+local j=string.sub(e,g)
+local k=string.match(j,"^([%a_][%w_]*)")
+assert(k~=nil,"Dot segments must be valid identifiers.")
+table.insert(h,k)
+g+=#k
+elseif i=="["then
+g+=1
+while string.match(string.sub(e,g,g),"%s")do g+=1 end
+local j
+j,g=ParseQuotedSegment(e,g)
+while string.match(string.sub(e,g,g),"%s")do g+=1 end
+assert(string.sub(e,g,g)=="]","Quoted path segment must end with ].")
+g+=1
+table.insert(h,j)
+else
+error("Unsupported instance-path syntax at character "..tostring(g)..".")
+end
+end
+
+return f,h
+end
+
+local function ResolveSegment(e,f)
+local g=e:FindFirstChild(f)
+if g then return g end
+
+
+
+local h,i=pcall(function()
+return e[f]
+end)
+if h and typeof(i)=="Instance"then return i end
+return nil
+end
+
+function b.Resolve(e)
+assert(type(e)=="table","Instance target must be an object.")
+
+local f
+local g
+if e.path~=nil then
+assert(e.pathSegments==nil,"Provide path or pathSegments, not both.")
+f,g=ParsePath(e.path)
+else
+assert(type(e.pathSegments)=="table","Provide path or pathSegments.")
+f=e.root=="workspace"and workspace or game
+g=e.pathSegments
+assert(#g>0 and#g<=c,"pathSegments must contain 1-100 names.")
+end
+
+local h=f
+for i,j in ipairs(g)do
+assert(type(j)=="string"and#j<=200,"Invalid path segment at index "..tostring(i)..".")
+local k=ResolveSegment(h,j)
+assert(k,"Instance path was not found at segment "..tostring(i).." ("..j..").")
+h=k
+end
+
+return h
+end
+
+local function EncodeSegment(e)
+if IsIdentifier(e)then return"."..e end
+local f=string.gsub(e,"\\","\\\\")
+f=string.gsub(f,'"','\\"')
+f=string.gsub(f,"\n","\\n")
+f=string.gsub(f,"\r","\\r")
+f=string.gsub(f,"\t","\\t")
+return'["'..f..'"]'
+end
+
+function b.StablePath(e)
+assert(typeof(e)=="Instance","StablePath expects an Instance.")
+if e==game then return"game"end
+
+local f={}
+local g=e
+local h=false
+while g and g~=game and#f<=c do
+table.insert(f,g.Name)
+g=g.Parent
+end
+h=g==game
+
+if not h then
+local i,j=pcall(function()return e:GetFullName()end)
+return i and("<detached>."..j)or("<detached>."..e.Name)
+end
+
+local i="game"
+for j=#f,1,-1 do
+i..=EncodeSegment(f[j])
+end
+return i
+end
+
+function b.Describe(e)
+local f
+pcall(function()f=e:GetDebugId()end)
+local g
+pcall(function()g=e:GetFullName()end)
+return{
+Name=e.Name,
+ClassName=e.ClassName,
+Path=b.StablePath(e),
+FullName=g,
+DebugId=f,
+}
+end
+
+b.Parse=ParsePath
+
+return b end function a.c():typeof(__modImpl())local b=a.cache.c if not b then b={c=__modImpl()}a.cache.c=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local c={}
+c.__index=c
+
+local function ClampInteger(d,e,f,g)
+local h=tonumber(d)
+if h==nil or h~=h then h=e end
+return math.max(f,math.min(g,math.floor(h)))
+end
+
+local function SafeString(d)
+local e,f=pcall(tostring,d)
+return e and f or"<unprintable>"
+end
+
+local function Utf8Prefix(d,e)
+local f={}
+local g=0
+local h=pcall(function()
+for h,i in utf8.codes(d)do
+local j=utf8.char(i)
+if g+#j>e then break end
+table.insert(f,j)
+g+=#j
+end
+end)
+if h then return table.concat(f),g end
+local i=string.sub(string.gsub(d,"[^%g ]","?"),1,e)
+return i,#i
+end
+
+local function FunctionSummary(d)
+local e={}
+pcall(function()e.name=debug.info(d,"n")end)
+pcall(function()e.source=debug.info(d,"s")end)
+pcall(function()e.line=debug.info(d,"l")end)
+local f=if type(getfunctionhash)=="function"then getfunctionhash else nil
+if f then pcall(function()e.hash=f(d)end)end
+if type(isexecutorclosure)=="function"then
+pcall(function()e.executorClosure=isexecutorclosure(d)==true end)
+end
+return e
+end
+
+local function CountTable(d,e)
+local f=0
+local g=true
+local h=pcall(function()
+for h in pairs(d)do
+if f>=e then g=false break end
+f+=1
+end
+end)
+return f,g and h
+end
+
+function c.new(d)
+d=d or{}
+assert(d.Handles~=nil,"TypedValues requires a runtime handle registry.")
+return setmetatable({
+Handles=d.Handles,
+defaultDepth=ClampInteger(d.DefaultDepth,3,0,8),
+defaultEntries=ClampInteger(d.DefaultEntries,100,1,1000),
+defaultStringBytes=ClampInteger(d.DefaultStringBytes,4096,64,65536),
+},c)
+end
+
+function c._handle(d,e,f,g)
+local h=d.Handles:Register(e,f,g)
+return{
+type="handle",
+kind=f,
+handle=h,
+summary=g,
+}
+end
+
+function c._encode(d,e,f,g)
+local h=typeof(e)
+if h=="nil"then return{type="nil"}end
+if h=="boolean"then return{type="boolean",value=e}end
+if h=="number"then
+if e~=e then return{type="number",special="nan"}end
+if e==math.huge then return{type="number",special="positive-infinity"}end
+if e==-math.huge then return{type="number",special="negative-infinity"}end
+if e==0 and 1/e==-math.huge then return{type="number",special="negative-zero"}end
+return{type="number",value=e}
+end
+if h=="string"then
+local i=math.max(0,math.min(f.stringBytes,f.maxStringBytesPerValue))
+local j,k=Utf8Prefix(e,i)
+f.stringBytes-=k
+return{
+type="string",
+value=j,
+originalBytes=#e~=#j and#e or nil,
+}
+end
+
+if h=="Instance"then
+local i=b.Describe(e)
+local j=d.Handles:Register(e,"instance",{
+className=i.ClassName,
+path=i.Path,
+})
+return{
+type="instance",
+handle=j,
+ref={
+path=i.Path,
+name=i.Name,
+className=i.ClassName,
+debugId=i.DebugId,
+},
+}
+end
+
+if h=="Vector2"then return{type="vector2",x=e.X,y=e.Y}end
+if h=="Vector3"then return{type="vector3",x=e.X,y=e.Y,z=e.Z}end
+if h=="Color3"then return{type="color3",r=e.R,g=e.G,b=e.B}end
+if h=="BrickColor"then return{type="brickColor",number=e.Number,name=e.Name}end
+if h=="UDim"then return{type="udim",scale=e.Scale,offset=e.Offset}end
+if h=="UDim2"then
+return{
+type="udim2",
+xScale=e.X.Scale,
+xOffset=e.X.Offset,
+yScale=e.Y.Scale,
+yOffset=e.Y.Offset,
+}
+end
+if h=="CFrame"then
+return{type="cframe",components={e:GetComponents()}}
+end
+if h=="Rect"then
+return{
+type="rect",
+min={type="vector2",x=e.Min.X,y=e.Min.Y},
+max={type="vector2",x=e.Max.X,y=e.Max.Y},
+}
+end
+if h=="Ray"then
+return{
+type="ray",
+origin={type="vector3",x=e.Origin.X,y=e.Origin.Y,z=e.Origin.Z},
+direction={type="vector3",x=e.Direction.X,y=e.Direction.Y,z=e.Direction.Z},
+}
+end
+if h=="NumberRange"then return{type="numberRange",min=e.Min,max=e.Max}end
+if h=="EnumItem"then
+return{
+type="enum",
+enumType=SafeString(e.EnumType),
+name=e.Name,
+value=e.Value,
+}
+end
+if h=="DateTime"then return{type="dateTime",unixTimestampMillis=e.UnixTimestampMillis}end
+if h=="PhysicalProperties"then
+return{
+type="physicalProperties",
+fields={
+density=e.Density,
+friction=e.Friction,
+elasticity=e.Elasticity,
+frictionWeight=e.FrictionWeight,
+elasticityWeight=e.ElasticityWeight,
+},
+}
+end
+if h=="NumberSequence"then
+local i={}
+for j,k in e.Keypoints do
+if j>f.maxEntries then break end
+table.insert(i,{time=k.Time,value=k.Value,envelope=k.Envelope})
+end
+return{type="numberSequence",keypoints=i}
+end
+if h=="ColorSequence"then
+local i={}
+for j,k in e.Keypoints do
+if j>f.maxEntries then break end
+table.insert(i,{
+time=k.Time,
+value={type="color3",r=k.Value.R,g=k.Value.G,b=k.Value.B},
+})
+end
+return{type="colorSequence",keypoints=i}
+end
+
+if h=="function"then
+return d:_handle(e,"function",FunctionSummary(e))
+end
+if h=="thread"then
+local i
+pcall(function()i=coroutine.status(e)end)
+return d:_handle(e,"thread",{status=i})
+end
+if h=="RBXScriptConnection"then
+return d:_handle(e,"connection",nil)
+end
+if h=="RBXScriptSignal"then
+return d:_handle(e,"signal",nil)
+end
+
+if h=="table"then
+local i,j=CountTable(e,math.max(f.maxEntries,1000))
+local k={entryCount=i,entryCountExact=j}
+local l=d.Handles:Register(e,"table",k)
+if f.expandTables~=true or g>=f.maxDepth then
+return{
+type="handle",
+kind="table",
+handle=l,
+summary=k,
+omitted=g>=f.maxDepth and"depth-limit"or nil,
+}
+end
+
+local m=f.seen[e]
+if m then return{type="reference",tableId=m,handle=l}end
+f.nextTableId+=1
+local n=f.nextTableId
+f.seen[e]=n
+local o={}
+local p=false
+for q,r in pairs(e)do
+if f.entries>=f.maxEntries then p=true break end
+f.entries+=1
+table.insert(o,{
+key=d:_encode(q,f,g+1),
+value=d:_encode(r,f,g+1),
+})
+end
+return{
+type="table",
+tableId=n,
+handle=l,
+entries=o,
+truncated=p or nil,
+omission=p and"entry-limit"or nil,
+}
+end
+
+if h=="userdata"or string.find(h,"Connection",1,true)then
+return d:_handle(e,"userdata",{robloxType=h,display=SafeString(e)})
+end
+
+return{
+type="unsupported",
+robloxType=h,
+display=SafeString(e),
+}
+end
+
+function c.Encode(d,e,f)
+f=f or{}
+local g={
+seen={},
+nextTableId=0,
+entries=0,
+maxEntries=ClampInteger(f.maxEntries,d.defaultEntries,1,1000),
+stringBytes=ClampInteger(f.maxStringBytes,d.defaultStringBytes,64,262144),
+maxStringBytesPerValue=ClampInteger(f.maxStringBytesPerValue,d.defaultStringBytes,64,65536),
+maxDepth=ClampInteger(f.maxDepth,d.defaultDepth,0,8),
+expandTables=f.expandTables==true,
+}
+local h=d:_encode(e,g,0)
+return h,{
+encodedEntries=g.entries,
+remainingStringBytes=g.stringBytes,
+codecVersion=1,
+}
+end
+
+local function DecodeEnum(d,e)
+local f=string.gsub(tostring(d or""),"^Enum%.","")
+local g=Enum[f]
+assert(g~=nil,"Unknown Enum type: "..f)
+local h=g[tostring(e or"")]
+assert(h~=nil,"Unknown Enum item: "..f.."."..tostring(e))
+return h
+end
+
+function c.Decode(d,e,f)
+if type(e)~="table"or e.type==nil then return e end
+f=f or{tables={},entries=0}
+local g=e.type
+if g=="nil"then return nil end
+if g=="boolean"or g=="string"then return e.value end
+if g=="number"then
+if e.special=="nan"then return 0/0 end
+if e.special=="positive-infinity"then return math.huge end
+if e.special=="negative-infinity"then return-math.huge end
+if e.special=="negative-zero"then return-0 end
+assert(type(e.value)=="number","Typed number requires a numeric value.")
+return e.value
+end
+if g=="handle"then
+local h=d.Handles:Resolve(e.handle)
+return h
+end
+if g=="enum"then return DecodeEnum(e.enumType,e.name)end
+if g=="vector2"then return Vector2.new(e.x,e.y)end
+if g=="vector3"then return Vector3.new(e.x,e.y,e.z)end
+if g=="color3"then return Color3.new(e.r,e.g,e.b)end
+if g=="brickColor"then return BrickColor.new(e.number or e.name)end
+if g=="udim"then return UDim.new(e.scale,e.offset)end
+if g=="udim2"then return UDim2.new(e.xScale,e.xOffset,e.yScale,e.yOffset)end
+if g=="cframe"then
+assert(type(e.components)=="table"and#e.components==12,"CFrame requires 12 components.")
+return CFrame.new(table.unpack(e.components))
+end
+if g=="rect"then
+return Rect.new(d:Decode(e.min,f),d:Decode(e.max,f))
+end
+if g=="ray"then
+return Ray.new(d:Decode(e.origin,f),d:Decode(e.direction,f))
+end
+if g=="numberRange"then return NumberRange.new(e.min,e.max)end
+if g=="dateTime"then return DateTime.fromUnixTimestampMillis(e.unixTimestampMillis)end
+if g=="physicalProperties"then
+local h=e.fields or{}
+return PhysicalProperties.new(
+h.density,
+h.friction,
+h.elasticity,
+h.frictionWeight,
+h.elasticityWeight
+)
+end
+if g=="numberSequence"then
+local h=e.keypoints or{}
+f.entries+=#h
+assert(f.entries<=1000,"Typed sequence input exceeds 1000 keypoints.")
+local i={}
+for j,k in h do
+table.insert(i,NumberSequenceKeypoint.new(k.time,k.value,k.envelope or 0))
+end
+return NumberSequence.new(i)
+end
+if g=="colorSequence"then
+local h=e.keypoints or{}
+f.entries+=#h
+assert(f.entries<=1000,"Typed sequence input exceeds 1000 keypoints.")
+local i={}
+for j,k in h do
+table.insert(i,ColorSequenceKeypoint.new(k.time,d:Decode(k.value,f)))
+end
+return ColorSequence.new(i)
+end
+if g=="table"then
+f.entries+=#(e.entries or{})
+assert(f.entries<=1000,"Typed table input exceeds 1000 entries.")
+local h={}
+if e.tableId~=nil then f.tables[e.tableId]=h end
+for i,j in e.entries or{}do
+h[d:Decode(j.key,f)]=d:Decode(j.value,f)
+end
+return h
+end
+if g=="reference"then
+local h=f.tables[e.tableId]
+assert(h~=nil,"Typed table reference points to an unknown tableId.")
+return h
+end
+error("Unsupported typed runtime input: "..tostring(g))
+end
+
+c.FunctionSummary=FunctionSummary
+c.CountTable=CountTable
+
+return c end function a.d():typeof(__modImpl())local b=a.cache.d if not b then b={c=__modImpl()}a.cache.d=b end return b.c end end do local function __modImpl()
+
+local b={}
+b.__index=b
+
+local function TimestampMillis()
+local c,d=pcall(function()return DateTime.now().UnixTimestampMillis end)
+return c and d or os.time()*1000
+end
+
+local function Descriptor(c,d,e,f,g,h)
+return{
+id=c,
+available=d==true,
+provider=e,
+quality=d and(f or"best-effort")or"degraded",
+testedAtUnixMs=TimestampMillis(),
+limits=g,
+degradedReason=d and nil or(h or"API is not exposed by this executor."),
+}
+end
+
+local function IsFunction(c)
+return type(c)=="function"
+end
+
+local function FirstFunction(...)
+for c,d in{...}do
+if IsFunction(d)then return d end
+end
+return nil
+end
+
+local function ExecutorIdentity()
+local c=FirstFunction(identifyexecutor,getexecutorname)
+if not c then return nil end
+local d,e,f=pcall(c)
+if not d then return{error=tostring(e)}end
+return{name=tostring(e),version=f~=nil and tostring(f)or nil}
+end
+
+function b.new(c)
+c=c or{}
+return setmetatable({
+connectorVersion=tostring(c.ConnectorVersion or"1"),
+WebSocketAvailable=c.WebSocketAvailable==true,
+},b)
+end
+
+function b.Probe(c)
+local d=type(debug)=="table"and debug or{}
+local e={
+Descriptor("transport.request",IsFunction(request),"executor-api","exact"),
+Descriptor("transport.websocket",c.WebSocketAvailable,"executor-api","exact"),
+Descriptor("script.loadstring",IsFunction(loadstring),"executor-api","exact"),
+Descriptor("script.decompile",IsFunction(decompile),"executor-api","best-effort"),
+Descriptor("script.bytecode",IsFunction(getscriptbytecode),"executor-api","best-effort"),
+Descriptor("script.hash",IsFunction(getscripthash),"executor-api","best-effort"),
+Descriptor("runtime.gc-snapshot",IsFunction(getgc),"executor-api","best-effort"),
+Descriptor("runtime.gc-filter",IsFunction(filtergc),"executor-api","best-effort"),
+Descriptor("runtime.function-hash",IsFunction(getfunctionhash),"executor-api","best-effort"),
+Descriptor("runtime.function-constants",IsFunction(getconstants)or IsFunction(d.getconstants),"executor-api","best-effort"),
+Descriptor("runtime.function-set-constant",IsFunction(setconstant)or IsFunction(d.setconstant),"executor-api","best-effort"),
+Descriptor("runtime.function-upvalues",IsFunction(getupvalues)or IsFunction(d.getupvalues),"executor-api","best-effort"),
+Descriptor("runtime.function-set-upvalue",IsFunction(setupvalue)or IsFunction(d.setupvalue),"executor-api","best-effort"),
+Descriptor("runtime.function-prototypes",IsFunction(getprotos)or IsFunction(d.getprotos),"executor-api","best-effort"),
+Descriptor("runtime.calling-script",IsFunction(getcallingscript),"executor-api","best-effort"),
+Descriptor("runtime.executor-closure",IsFunction(isexecutorclosure),"executor-api","best-effort"),
+Descriptor("runtime.environments",IsFunction(getrenv)or IsFunction(getsenv)or IsFunction(getfenv),"executor-api","best-effort"),
+Descriptor("runtime.scripts",IsFunction(getscripts),"executor-api","best-effort"),
+Descriptor("runtime.running-scripts",IsFunction(getrunningscripts),"executor-api","best-effort"),
+Descriptor("runtime.loaded-modules",IsFunction(getloadedmodules),"executor-api","best-effort"),
+Descriptor("runtime.nil-instances",IsFunction(getnilinstances),"executor-api","best-effort"),
+Descriptor("runtime.all-instances",IsFunction(getinstances),"executor-api","best-effort"),
+Descriptor("runtime.script-closure",IsFunction(getscriptclosure),"executor-api","best-effort"),
+Descriptor("runtime.thread-identity-read",IsFunction(getthreadidentity)or IsFunction(getidentity)or IsFunction(getthreadcontext),"executor-api","best-effort"),
+Descriptor("runtime.thread-identity-write",IsFunction(setthreadidentity)or IsFunction(setidentity)or IsFunction(setthreadcontext),"executor-api","best-effort"),
+Descriptor("signal.connections",IsFunction(getconnections),"executor-api","best-effort"),
+Descriptor("callback.inspect",IsFunction(getcallbackvalue),"executor-api","best-effort"),
+Descriptor("property.hidden-read",IsFunction(gethiddenproperty),"executor-api","best-effort"),
+Descriptor("property.hidden-write",IsFunction(sethiddenproperty),"executor-api","best-effort"),
+Descriptor("property.scriptable",IsFunction(setscriptable)or IsFunction(isscriptable),"executor-api","best-effort"),
+Descriptor("hook.function",IsFunction(hookfunction),"executor-api","best-effort"),
+Descriptor("hook.metamethod",IsFunction(hookmetamethod),"executor-api","best-effort"),
+Descriptor("hook.namecall-method",IsFunction(getnamecallmethod),"executor-api","best-effort"),
+Descriptor("hook.raw-metatable",IsFunction(getrawmetatable),"executor-api","best-effort"),
+Descriptor("hook.new-c-closure",IsFunction(newcclosure),"executor-api","best-effort"),
+Descriptor("actor.list",IsFunction(getactors),"executor-api","best-effort"),
+Descriptor("actor.threads",IsFunction(getactorthreads),"executor-api","best-effort"),
+Descriptor("actor.execute",IsFunction(run_on_actor)or IsFunction(runonactor),"executor-api","best-effort"),
+Descriptor("input.fire-signal",IsFunction(firesignal),"executor-api","best-effort"),
+Descriptor("input.fire-prompt",IsFunction(fireproximityprompt),"executor-api","best-effort"),
+Descriptor("input.fire-click-detector",IsFunction(fireclickdetector),"executor-api","best-effort"),
+Descriptor("input.fire-touch",IsFunction(firetouchinterest),"executor-api","best-effort"),
+}
+
+local f={}
+local g=0
+for h,i in e do
+local j=string.match(i.id,"^([^.]+)")or"other"
+f[j]=f[j]or{available=0,unavailable=0}
+if i.available then
+g+=1
+f[j].available+=1
+else
+f[j].unavailable+=1
+end
+i.connectorVersion=c.connectorVersion
+end
+
+return{
+executor=ExecutorIdentity(),
+connectorVersion=c.connectorVersion,
+testedAtUnixMs=TimestampMillis(),
+available=g,
+unavailable=#e-g,
+byCategory=f,
+capabilities=e,
+}
+end
+
+return b end function a.e():typeof(__modImpl())local b=a.cache.e if not b then b={c=__modImpl()}a.cache.e=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local c={}
+c.__index=c
+
+local function ClampInteger(d,e,f,g)
+local h=tonumber(d)
+if h==nil or h~=h then h=e end
+return math.max(f,math.min(g,math.floor(h)))
+end
+
+local function TimestampMillis()
+local d,e=pcall(function()return DateTime.now().UnixTimestampMillis end)
+return d and e or os.time()*1000
+end
+
+local function SafePrimitive(d)
+local e=type(d)
+return e=="string"or e=="number"or e=="boolean"or d==nil
+end
+
+local function IsExecutorClosure(d)
+if type(isexecutorclosure)~="function"or type(d)~="function"then return false end
+local e,f=pcall(isexecutorclosure,d)
+return e and f==true
+end
+
+local function GetConstants(d)
+local e=if type(getconstants)=="function"then getconstants else nil
+if not e and type(debug)=="table"and type(debug.getconstants)=="function"then
+e=debug.getconstants
+end
+if not e then return nil end
+local f,g=pcall(e,d)
+return f and type(g)=="table"and g or nil
+end
+
+local function GetUpvalues(d)
+local e=if type(getupvalues)=="function"then getupvalues else nil
+if not e and type(debug)=="table"and type(debug.getupvalues)=="function"then
+e=debug.getupvalues
+end
+if not e then return nil end
+local f,g=pcall(e,d)
+return f and type(g)=="table"and g or nil
+end
+
+local function GetPrototypes(d)
+local e=if type(getprotos)=="function"then getprotos else nil
+if not e and type(debug)=="table"and type(debug.getprotos)=="function"then
+e=debug.getprotos
+end
+if not e then return nil end
+local f,g=pcall(e,d)
+return f and type(g)=="table"and g or nil
+end
+
+local function ContainsPrimitive(d,e,f)
+if type(e)~="table"or#e==0 then return true end
+if type(d)~="table"then return false end
+for g,h in e do
+local i=false
+local j=0
+for k,l in pairs(d)do
+if j>=f then break end
+j+=1
+if SafePrimitive(l)and l==h then i=true break end
+end
+if not i then return false end
+end
+return true
+end
+
+local function TableSummary(d,e)
+local f=0
+local g=true
+local h={}
+local i={}
+local j=pcall(function()
+for j in pairs(d)do
+if f>=e then g=false break end
+f+=1
+local k=typeof(j)
+i[k]=(i[k]or 0)+1
+if type(j)=="string"and#h<20 then
+table.insert(h,string.sub(j,1,120))
+end
+end
+end)
+table.sort(h)
+local k={}
+for l,m in i do table.insert(k,l..":"..tostring(m))end
+table.sort(k)
+return{
+entryCount=f,
+entryCountExact=g and j,
+keyNames=h,
+keyTypes=i,
+signature=table.concat(h,"|").."#"..table.concat(k,","),
+}
+end
+
+local function FunctionSummary(d,e)
+local f=e.FunctionSummary(d)
+local g=GetConstants(d)
+local h=GetUpvalues(d)
+local i=GetPrototypes(d)
+f.executorClosure=IsExecutorClosure(d)
+f.constantCount=g and#g or nil
+f.upvalueCount=h and#h or nil
+f.prototypeCount=i and#i or nil
+f.signature=table.concat({
+tostring(f.hash or""),
+tostring(f.source or""),
+tostring(f.line or""),
+tostring(f.name or""),
+tostring(f.constantCount or""),
+tostring(f.upvalueCount or""),
+},"|")
+return f
+end
+
+function c.new(d)
+d=d or{}
+assert(d.Handles~=nil and d.TypedValues~=nil,"GcExplorer requires handles and typed values.")
+return setmetatable({
+Handles=d.Handles,
+TypedValues=d.TypedValues,
+snapshots={},
+snapshotOrder={},
+nextSnapshot=0,
+maxSnapshots=ClampInteger(d.MaxSnapshots,8,2,32),
+defaultScanLimit=ClampInteger(d.DefaultScanLimit,20000,100,100000),
+tableScanLimit=ClampInteger(d.TableScanLimit,250,50,10000),
+running=false,
+},c)
+end
+
+function c._snapshotId(d)
+d.nextSnapshot+=1
+return string.format("gs_%s_%d",d.Handles.registryId,d.nextSnapshot)
+end
+
+function c._objectRecord(d,e)
+local f=d.Handles.Classify(e)
+local g
+if f=="function"then
+g=FunctionSummary(e,d.TypedValues)
+elseif f=="table"then
+g=TableSummary(e,d.tableScanLimit)
+elseif f=="thread"then
+local h
+pcall(function()h=coroutine.status(e)end)
+g={status=h,signature="thread:"..tostring(h)}
+elseif f=="instance"then
+local h=b.Describe(e)
+g={
+path=h.Path,
+name=h.Name,
+className=h.ClassName,
+debugId=h.DebugId,
+}
+g.signature=tostring(g.className).."|"..tostring(g.path)
+else
+g={robloxType=typeof(e),signature=typeof(e)..":"..tostring(e)}
+end
+
+
+local h=d.Handles:Register(e,f,g,3600,false)
+return{handle=h,kind=f,summary=g}
+end
+
+function c.CreateSnapshot(d,e)
+assert(type(getgc)=="function","This executor does not expose getgc; GC snapshots are unavailable.")
+assert(not d.running,"Another GC snapshot is already running for this client.")
+d.running=true
+
+local f,g=pcall(function()
+local f=os.clock()
+local g,h=pcall(getgc,e.includeTables~=false)
+if not g then g,h=pcall(getgc)end
+assert(g and type(h)=="table","getgc failed: "..tostring(h))
+
+local i=ClampInteger(e.scanLimit,d.defaultScanLimit,100,100000)
+local j=e.includeExecutor==true
+local k={}
+for l,m in e.kinds or{}do k[m]=true end
+local l=next(k)~=nil
+local m={
+snapshotId=d:_snapshotId(),
+createdAtUnixMs=TimestampMillis(),
+scanLimit=i,
+totalReturnedByExecutor=#h,
+scanned=0,
+retained=0,
+recordFailures=0,
+recordFailureSamples={},
+truncated=false,
+includeExecutor=j,
+objects={},
+counts={},
+}
+
+for n,o in h do
+if m.scanned>=i then m.truncated=true break end
+m.scanned+=1
+if m.scanned%250==0 then task.wait()end
+local p=d.Handles.Classify(o)
+if l and not k[p]then continue end
+if p=="function"and not j and IsExecutorClosure(o)then continue end
+if o==m or o==d.snapshots or o==d.snapshotOrder then continue end
+local q,r=pcall(function()return d:_objectRecord(o)end)
+if q then
+table.insert(m.objects,r)
+m.retained+=1
+m.counts[r.kind]=(m.counts[r.kind]or 0)+1
+else
+m.recordFailures+=1
+if#m.recordFailureSamples<5 then
+table.insert(m.recordFailureSamples,string.sub(tostring(r),1,300))
+end
+end
+end
+
+m.durationMs=math.floor((os.clock()-f)*1000+0.5)
+d.snapshots[m.snapshotId]=m
+table.insert(d.snapshotOrder,m.snapshotId)
+while#d.snapshotOrder>d.maxSnapshots do
+local n=table.remove(d.snapshotOrder,1)
+d.snapshots[n]=nil
+end
+return d:DescribeSnapshot(m)
+end)
+d.running=false
+if not f then error(g)end
+return g
+end
+
+function c.DescribeSnapshot(d,e)
+return{
+snapshotId=e.snapshotId,
+createdAtUnixMs=e.createdAtUnixMs,
+durationMs=e.durationMs,
+scanLimit=e.scanLimit,
+totalReturnedByExecutor=e.totalReturnedByExecutor,
+scanned=e.scanned,
+retained=e.retained,
+recordFailures=e.recordFailures,
+recordFailureSamples=e.recordFailureSamples,
+truncated=e.truncated,
+includeExecutor=e.includeExecutor,
+counts=e.counts,
+}
+end
+
+function c.GetSnapshot(d,e)
+local f=d.snapshots[e]
+assert(f~=nil,"Unknown or released GC snapshot: "..tostring(e))
+return f
+end
+
+function c.ListSnapshots(d)
+local e={}
+for f,g in d.snapshotOrder do
+local h=d.snapshots[g]
+if h then table.insert(e,d:DescribeSnapshot(h))end
+end
+return{snapshots=e,maximumSnapshots=d.maxSnapshots,running=d.running}
+end
+
+function c.ReleaseSnapshot(d,e)
+local f=d.snapshots[e]~=nil
+d.snapshots[e]=nil
+for g=#d.snapshotOrder,1,-1 do
+if d.snapshotOrder[g]==e then table.remove(d.snapshotOrder,g)end
+end
+return{snapshotId=e,released=f}
+end
+
+local function HasTableKeys(d,e)
+if type(e)~="table"or#e==0 then return true end
+if type(d)~="table"then return false end
+for f,g in e do
+if rawget(d,g)==nil then return false end
+end
+return true
+end
+
+function c._matches(d,e,f,g)
+if g.kind and e.kind~=g.kind then return false end
+local h=e.summary or{}
+if g.name and h.name~=g.name then return false end
+if g.hash and h.hash~=g.hash then return false end
+if g.sourceContains then
+if type(h.source)~="string"or not string.find(h.source,g.sourceContains,1,true)then return false end
+end
+if g.signatureContains then
+if type(h.signature)~="string"or not string.find(h.signature,g.signatureContains,1,true)then return false end
+end
+if g.minEntries and(h.entryCount or-1)<g.minEntries then return false end
+if g.maxEntries and(h.entryCount or math.huge)>g.maxEntries then return false end
+if e.kind=="function"then
+if g.ignoreExecutor~=false and h.executorClosure==true then return false end
+if not ContainsPrimitive(GetConstants(f),g.constants,d.tableScanLimit)then return false end
+if not ContainsPrimitive(GetUpvalues(f),g.upvalues,d.tableScanLimit)then return false end
+elseif e.kind=="table"then
+if not HasTableKeys(f,g.keys)then return false end
+if not ContainsPrimitive(f,g.values,d.tableScanLimit)then return false end
+if type(g.keyValuePairs)=="table"then
+for i,j in g.keyValuePairs do
+if rawget(f,i)~=j then return false end
+end
+end
+end
+return true
+end
+
+function c.Query(d,e)
+local f=d:GetSnapshot(e.snapshotId)
+local g=ClampInteger(e.cursor,0,0,1000000000)
+local h=ClampInteger(e.limit,25,1,200)
+local i={}
+local j=0
+local k=0
+local l=0
+for m,n in f.objects do
+l+=1
+if l%500==0 then task.wait()end
+local o,p=pcall(function()return d.Handles:Resolve(n.handle,nil,false)end)
+if not o then k+=1 continue end
+local q,r=pcall(function()return d:_matches(n,p,e)end)
+if not q or not r then continue end
+if j>=g and#i<h then
+d.Handles:Pin(n.handle)
+table.insert(i,n)
+end
+j+=1
+end
+local m=g+#i
+return{
+snapshotId=f.snapshotId,
+totalMatched=j,
+cursor=g,
+nextCursor=m<j and m or nil,
+staleHandles=k,
+recordsScanned=l,
+results=i,
+}
+end
+
+function c.Diff(d,e)
+local f=d:GetSnapshot(e.beforeSnapshotId)
+local g=d:GetSnapshot(e.afterSnapshotId)
+local h={}
+local i={}
+local j={}
+local k={}
+for l,m in f.objects do
+h[m.handle]=m
+j[m.kind]=(j[m.kind]or 0)+1
+end
+for l,m in g.objects do
+i[m.handle]=m
+k[m.kind]=(k[m.kind]or 0)+1
+end
+
+local l=ClampInteger(e.sampleLimit,50,0,200)
+local m={}
+local n={}
+local o=0
+local p=0
+local q=0
+for r,s in i do
+if h[r]then
+q+=1
+else
+o+=1
+if#m<l then table.insert(m,s)end
+end
+end
+for r,s in h do
+if not i[r]then
+p+=1
+if#n<l then table.insert(n,s)end
+end
+end
+return{
+beforeSnapshotId=f.snapshotId,
+afterSnapshotId=g.snapshotId,
+addedCount=o,
+removedCount=p,
+retainedCount=q,
+addedSample=m,
+removedSample=n,
+countsByKind={before=j,after=k},
+}
+end
+
+function c.Statistics(d,e)
+local f=d:GetSnapshot(e.snapshotId)
+local g={}
+local h={}
+local i={}
+for j,k in f.objects do
+local l=k.summary or{}
+if k.kind=="function"then
+local m=tostring(l.source or"<unknown>")
+g[m]=(g[m]or 0)+1
+elseif k.kind=="table"then
+local m=tostring(l.signature or"<unknown>")
+h[m]=(h[m]or 0)+1
+table.insert(i,k)
+end
+end
+table.sort(i,function(j,k)
+return(j.summary.entryCount or 0)>(k.summary.entryCount or 0)
+end)
+while#i>ClampInteger(e.largestTableLimit,20,0,100)do table.remove(i)end
+return{
+snapshotId=f.snapshotId,
+counts=f.counts,
+functionsBySource=g,
+tableSignatures=h,
+largestTables=i,
+handleRegistry=d.Handles:Stats(),
+}
+end
+
+local function IsReferenceValue(d)
+local e=typeof(d)
+return e=="table"
+or e=="function"
+or e=="thread"
+or e=="Instance"
+or e=="RBXScriptConnection"
+or e=="RBXScriptSignal"
+or e=="userdata"
+end
+
+function c.References(d,e)
+local f=d:GetSnapshot(e.snapshotId)
+local g=d.Handles:Resolve(e.handle)
+local h=e.direction or"both"
+local i=ClampInteger(e.limit,100,1,500)
+local j=ClampInteger(e.scanLimit,20000,100,100000)
+local k=ClampInteger(e.perObjectScanLimit,250,10,10000)
+local l={}
+local m=0
+local n=0
+local o=false
+
+local function AddOutgoing(p,q,r)
+if#l>=i then o=true return false end
+if not IsReferenceValue(q)then return true end
+table.insert(l,{
+direction="outgoing",
+fromHandle=e.handle,
+relation=p,
+detail=r,
+to=d.TypedValues:Encode(q),
+})
+return true
+end
+
+local function AddIncoming(p,q,r)
+if#l>=i then o=true return false end
+d.Handles:Pin(p.handle)
+table.insert(l,{
+direction="incoming",
+from={
+type="handle",
+kind=p.kind,
+handle=p.handle,
+summary=p.summary,
+},
+relation=q,
+detail=r,
+toHandle=e.handle,
+})
+return true
+end
+
+if h=="outgoing"or h=="both"then
+local p=typeof(g)
+if p=="table"then
+local q=0
+for r,s in next,g do
+if q>=k or#l>=i then o=true break end
+q+=1
+n+=1
+AddOutgoing("table-key",r,{key=d.TypedValues:Encode(r)})
+if not AddOutgoing("table-value",s,{key=d.TypedValues:Encode(r)})then break end
+end
+elseif p=="function"then
+for q,r in pairs(GetUpvalues(g)or{})do
+if#l>=i then o=true break end
+AddOutgoing("upvalue",r,{index=d.TypedValues:Encode(q)})
+end
+for q,r in pairs(GetPrototypes(g)or{})do
+if#l>=i then o=true break end
+AddOutgoing("prototype",r,{index=d.TypedValues:Encode(q)})
+end
+end
+local q=if type(getrawmetatable)=="function"then getrawmetatable else getmetatable
+local r,s=pcall(q,g)
+if r and s~=nil then AddOutgoing("metatable",s,nil)end
+end
+
+if(h=="incoming"or h=="both")and#l<i then
+for p,q in f.objects do
+if m>=j or#l>=i then o=true break end
+m+=1
+if m%250==0 then task.wait()end
+if q.handle==e.handle then continue end
+local r,s=pcall(function()
+return d.Handles:Resolve(q.handle,nil,false)
+end)
+if not r then continue end
+local t=typeof(s)
+if t=="table"then
+local u=0
+local v=pcall(function()
+for v,w in next,s do
+if u>=k or#l>=i then o=true break end
+u+=1
+n+=1
+if rawequal(v,g)then AddIncoming(q,"table-key",nil)end
+if rawequal(w,g)then
+AddIncoming(q,"table-value",{key=d.TypedValues:Encode(v)})
+end
+end
+end)
+if not v then continue end
+elseif t=="function"then
+for u,v in pairs(GetUpvalues(s)or{})do
+if rawequal(v,g)then
+AddIncoming(q,"upvalue",{index=d.TypedValues:Encode(u)})
+end
+if#l>=i then break end
+end
+for u,v in pairs(GetPrototypes(s)or{})do
+if rawequal(v,g)then
+AddIncoming(q,"prototype",{index=d.TypedValues:Encode(u)})
+end
+if#l>=i then break end
+end
+end
+local u=if type(getrawmetatable)=="function"then getrawmetatable else getmetatable
+local v,w=pcall(u,s)
+if v and rawequal(w,g)then AddIncoming(q,"metatable",nil)end
+end
+end
+
+return{
+snapshotId=f.snapshotId,
+targetHandle=e.handle,
+direction=h,
+edges=l,
+edgeCount=#l,
+objectsScanned=m,
+entriesScanned=n,
+truncated=o,
+}
+end
+
+return c end function a.f():typeof(__modImpl())local b=a.cache.f if not b then b={c=__modImpl()}a.cache.f=b end return b.c end end do local function __modImpl()
+
 return function(b)
 local c=b.HttpService
 local d=b.BridgeHTTPURL
@@ -484,7 +2048,7 @@ end
 return{
 CreateBridge=CreateBridge,
 }
-end end function a.b():typeof(__modImpl())local b=a.cache.b if not b then b={c=__modImpl()}a.cache.b=b end return b.c end end do local function __modImpl()
+end end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -585,7 +2149,7 @@ end
 
 b.Stop=b.Destroy
 
-return b end function a.c():typeof(__modImpl())local b=a.cache.c if not b then b={c=__modImpl()}a.cache.c=b end return b.c end end do local function __modImpl()
+return b end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -780,7 +2344,7 @@ end
 return true
 end
 
-return b end function a.d():typeof(__modImpl())local b=a.cache.d if not b then b={c=__modImpl()}a.cache.d=b end return b.c end end do local function __modImpl()
+return b end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -808,7 +2372,7 @@ function b.MarkStarted(d)
 d.started=true
 end
 
-return b end function a.e():typeof(__modImpl())local b=a.cache.e if not b then b={c=__modImpl()}a.cache.e=b end return b.c end end do local function __modImpl()
+return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -830,9 +2394,9 @@ c.builtinDisabled=true
 c.useDirectBuiltin=false
 end
 
-return b end function a.f():typeof(__modImpl())local b=a.cache.f if not b then b={c=__modImpl()}a.cache.f=b end return b.c end end do local function __modImpl()
+return b end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
 
-local b=a.f()
+local b=a.k()
 
 local c={}
 
@@ -851,7 +2415,7 @@ d.bytecode=g
 return true
 end
 
-return c end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
+return c end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -888,7 +2452,7 @@ d.workers:SetMaxConcurrent(d.currentWorkers)
 end
 end
 
-return b end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
+return b end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -985,7 +2549,7 @@ end
 end
 end
 
-return b end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
+return b end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -1042,7 +2606,7 @@ if f~=false then c:Publish()end
 return true
 end
 
-return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
+return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -1254,7 +2818,7 @@ ResetScriptSourceUploadQueue=ResetScriptSourceUploadQueue,
 StartUploadQueue=StartUploadQueue,
 UploadQueueMaxBytes=33554432,
 }
-end end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
+end end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -1910,7 +3474,7 @@ RefreshDecompilerPlan=RefreshDecompilerPlan,
 ResetDecompilerClient=ResetDecompilerClient,
 TakeRetryServerOptions=TakeRetryServerOptions,
 }
-end end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
+end end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -2533,7 +4097,7 @@ ResumeDeferredScriptMappings=ResumeDeferredScriptMappings,
 StartFailedScriptResync=StartFailedScriptResync,
 StartScriptMapping=StartScriptMapping,
 }
-end end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
+end end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.LogService
@@ -2654,201 +4218,9 @@ local f=table.pack(loadstring(e.source)())
 
 return f
 end)
-end end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
+end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
 
-
-
-local b={}
-
-local c=100
-local d=2000
-
-local function Trim(e)
-return(string.gsub(string.gsub(e,"^%s+",""),"%s+$",""))
-end
-
-local function IsIdentifier(e)
-return string.match(e,"^[%a_][%w_]*$")~=nil
-end
-
-local function DecodeEscape(e)
-if e=="n"then return"\n"end
-if e=="r"then return"\r"end
-if e=="t"then return"\t"end
-if e=="b"then return"\b"end
-if e=="f"then return"\f"end
-return e
-end
-
-local function ParseQuotedSegment(e,f)
-local g=string.sub(e,f,f)
-assert(g=='"'or g=="'","Bracket segments must use a quoted child name.")
-f+=1
-
-local h={}
-local i=false
-while f<=#e do
-local j=string.sub(e,f,f)
-if j==g then
-i=true
-f+=1
-break
-end
-if j=="\\"then
-f+=1
-assert(f<=#e,"Instance path ends inside an escape sequence.")
-j=DecodeEscape(string.sub(e,f,f))
-end
-table.insert(h,j)
-f+=1
-end
-assert(i,"Unterminated quoted instance-path segment.")
-return table.concat(h),f
-end
-
-local function ParsePath(e)
-assert(type(e)=="string","Instance path must be a string.")
-e=Trim(e)
-assert(e~="","Instance path cannot be empty.")
-assert(#e<=d,"Instance path is too long.")
-
-local f
-local g
-if string.sub(e,1,4)=="game"then
-local h=string.sub(e,5,5)
-assert(h==""or h=="."or h=="[","Path root must be exactly game or workspace.")
-f=game
-g=5
-elseif string.sub(e,1,9)=="workspace"then
-local h=string.sub(e,10,10)
-assert(h==""or h=="."or h=="[","Path root must be exactly game or workspace.")
-f=workspace
-g=10
-else
-error"Instance path must be rooted at game or workspace."
-end
-
-local h={}
-while g<=#e do
-assert(#h<c,"Instance path has too many segments.")
-local i=string.sub(e,g,g)
-if i=="."then
-g+=1
-local j=string.sub(e,g)
-local k=string.match(j,"^([%a_][%w_]*)")
-assert(k~=nil,"Dot segments must be valid identifiers.")
-table.insert(h,k)
-g+=#k
-elseif i=="["then
-g+=1
-while string.match(string.sub(e,g,g),"%s")do g+=1 end
-local j
-j,g=ParseQuotedSegment(e,g)
-while string.match(string.sub(e,g,g),"%s")do g+=1 end
-assert(string.sub(e,g,g)=="]","Quoted path segment must end with ].")
-g+=1
-table.insert(h,j)
-else
-error("Unsupported instance-path syntax at character "..tostring(g)..".")
-end
-end
-
-return f,h
-end
-
-local function ResolveSegment(e,f)
-local g=e:FindFirstChild(f)
-if g then return g end
-
-
-
-local h,i=pcall(function()
-return e[f]
-end)
-if h and typeof(i)=="Instance"then return i end
-return nil
-end
-
-function b.Resolve(e)
-assert(type(e)=="table","Instance target must be an object.")
-
-local f
-local g
-if e.path~=nil then
-assert(e.pathSegments==nil,"Provide path or pathSegments, not both.")
-f,g=ParsePath(e.path)
-else
-assert(type(e.pathSegments)=="table","Provide path or pathSegments.")
-f=e.root=="workspace"and workspace or game
-g=e.pathSegments
-assert(#g>0 and#g<=c,"pathSegments must contain 1-100 names.")
-end
-
-local h=f
-for i,j in ipairs(g)do
-assert(type(j)=="string"and#j<=200,"Invalid path segment at index "..tostring(i)..".")
-local k=ResolveSegment(h,j)
-assert(k,"Instance path was not found at segment "..tostring(i).." ("..j..").")
-h=k
-end
-
-return h
-end
-
-local function EncodeSegment(e)
-if IsIdentifier(e)then return"."..e end
-local f=string.gsub(e,"\\","\\\\")
-f=string.gsub(f,'"','\\"')
-f=string.gsub(f,"\n","\\n")
-f=string.gsub(f,"\r","\\r")
-f=string.gsub(f,"\t","\\t")
-return'["'..f..'"]'
-end
-
-function b.StablePath(e)
-assert(typeof(e)=="Instance","StablePath expects an Instance.")
-if e==game then return"game"end
-
-local f={}
-local g=e
-local h=false
-while g and g~=game and#f<=c do
-table.insert(f,g.Name)
-g=g.Parent
-end
-h=g==game
-
-if not h then
-local i,j=pcall(function()return e:GetFullName()end)
-return i and("<detached>."..j)or("<detached>."..e.Name)
-end
-
-local i="game"
-for j=#f,1,-1 do
-i..=EncodeSegment(f[j])
-end
-return i
-end
-
-function b.Describe(e)
-local f
-pcall(function()f=e:GetDebugId()end)
-local g
-pcall(function()g=e:GetFullName()end)
-return{
-Name=e.Name,
-ClassName=e.ClassName,
-Path=b.StablePath(e),
-FullName=g,
-DebugId=f,
-}
-end
-
-b.Parse=ParsePath
-
-return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
-
-local b=a.o()
+local b=a.c()
 
 return function(c,d)
 local e=c.ScriptMappingPipeline
@@ -2934,9 +4306,9 @@ end
 
 return"-- Lines "..r.."-"..t.." of "..o.."\n"..table.concat(u,"\n")..x
 end)
-end end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
+end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
 
-local b=a.o()
+local b=a.c()
 local c=false
 local d=1000
 
@@ -3148,7 +4520,7 @@ r.Note="Output capped at "..o.." nodes. Narrow with classFilter, lower maxDepth,
 end
 return r
 end)
-end end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
+end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -3438,9 +4810,9 @@ end)
 return o,true
 end
 
-return b end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
+return b end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
 
-local b=a.r()
+local b=a.v()
 
 return function(c,d)
 d:BindToType("ensure-remote-spy",function(e)
@@ -3574,7 +4946,7 @@ count=#m,
 results=m
 }
 end)
-end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
+end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local function GetRemoteIdentity(d)
@@ -3744,9 +5116,9 @@ end
 
 error("Invalid remote-spy operation: "..tostring(e))
 end)
-end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
+end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
 
-local b=a.o()
+local b=a.c()
 
 return function(c,d)
 local e=c.VirtualInputManager
@@ -3843,7 +5215,7 @@ status="success",
 message="Successfully fired click signals on Button."
 }
 end)
-end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
+end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -3941,9 +5313,9 @@ getgenv().Cobalt.__RobloxMcpInternal==true and"bundled"or"external"
 },
 }
 end)
-end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
+end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
 
-local b=a.o()
+local b=a.c()
 
 return function(c,d)
 d:BindToTypeStructured("inspect-instance",function(e)
@@ -4043,7 +5415,7 @@ end
 
 return g
 end)
-end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
+end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -4162,7 +5534,7 @@ end)
 c:BindToTypeStructured("script-index-resync",function(j)
 return StartFresh"resync_started"
 end)
-end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
+end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=500
@@ -4440,9 +5812,781 @@ e=false
 if not h then error(i)end
 return i
 end)
-end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
+end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
 
-local b=a.o()
+return function(b,c)
+c:BindToTypeStructured("executor-capabilities",function(d)
+return b.RuntimeCapabilities:Probe()
+end)
+end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local function ClampInteger(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.max(e,math.min(f,math.floor(g)))
+end
+
+local function FunctionGetter(c,d)
+if type(c)=="function"then return c end
+if type(debug)=="table"and type(debug[d])=="function"then return debug[d]end
+return nil
+end
+
+local function FirstFunction(...)
+for c,d in{...}do
+if type(d)=="function"then return d end
+end
+return nil
+end
+
+local function SafeFunctionCollection(c,d,e)
+local f=FunctionGetter(d,e)
+if not f then return nil,"Executor does not expose "..e.."."end
+local g,h=pcall(f,c)
+if not g then return nil,tostring(h)end
+if type(h)~="table"then return nil,e.." returned a non-table value."end
+return h,nil
+end
+
+local function FunctionDetails(c)
+local d={}
+pcall(function()d.name=debug.info(c,"n")end)
+pcall(function()d.source=debug.info(c,"s")end)
+pcall(function()d.line=debug.info(c,"l")end)
+pcall(function()d.parameterCount,d.isVararg=debug.info(c,"a")end)
+if type(getfunctionhash)=="function"then
+pcall(function()d.hash=getfunctionhash(c)end)
+end
+if type(isexecutorclosure)=="function"then
+pcall(function()d.executorClosure=isexecutorclosure(c)==true end)
+end
+if type(islclosure)=="function"then pcall(function()d.luaClosure=islclosure(c)==true end)end
+if type(iscclosure)=="function"then pcall(function()d.cClosure=iscclosure(c)==true end)end
+return d
+end
+
+local function PageCollection(c,d,e,f)
+d=ClampInteger(d,0,0,1000000000)
+e=ClampInteger(e,25,1,200)
+local g={}
+local h=0
+local i=false
+local j=d+e+1
+for k,l in pairs(c or{})do
+if h>=j then i=true break end
+if h>=d and#g<e then
+table.insert(g,{
+key=f:Encode(k),
+value=f:Encode(l),
+})
+end
+h+=1
+end
+local k=d+#g
+return{
+total=h,
+totalIsLowerBound=i,
+cursor=d,
+nextCursor=(i or k<h)and k or nil,
+entries=g,
+}
+end
+
+local function ReadConnectionField(c,d)
+local e,f=pcall(function()return c[d]end)
+return e and f or nil
+end
+
+return function(c,d)
+local e=c.RuntimeHandles
+local f=c.RuntimeValues
+
+d:BindToTypeStructured("runtime-inspect",function(g)
+local h,i=e:Resolve(g.handle)
+local j=e:Describe(g.handle)
+j.robloxType=typeof(h)
+
+if i.kind=="table"then
+j.page=PageCollection(h,g.cursor,g.limit,f)
+j.pageStable=false
+local k
+local l=if type(getrawmetatable)=="function"then getrawmetatable else getmetatable
+pcall(function()k=l(h)end)
+if k~=nil then j.metatable=f:Encode(k)end
+elseif i.kind=="function"then
+j.functionInfo=FunctionDetails(h)
+if g.includeConstants~=false then
+local k,l=SafeFunctionCollection(h,getconstants,"getconstants")
+j.constants=k and PageCollection(k,g.cursor,g.limit,f)or nil
+j.constantsError=l
+end
+if g.includeUpvalues~=false then
+local k,l=SafeFunctionCollection(h,getupvalues,"getupvalues")
+j.upvalues=k and PageCollection(k,g.cursor,g.limit,f)or nil
+j.upvaluesError=l
+end
+if g.includePrototypes==true then
+local k,l=SafeFunctionCollection(h,getprotos,"getprotos")
+j.prototypes=k and PageCollection(k,g.cursor,g.limit,f)or nil
+j.prototypesError=l
+end
+elseif i.kind=="instance"then
+j.instance=b.Describe(h)
+local k={}
+local l={}
+for m=1,math.min(#(g.properties or{}),100)do
+local n=g.properties[m]
+local o,p=pcall(function()return h[n]end)
+if o then k[n]=f:Encode(p)else l[n]=tostring(p)end
+end
+if next(k)then j.properties=k end
+if next(l)then j.propertyErrors=l end
+elseif i.kind=="thread"then
+pcall(function()j.status=coroutine.status(h)end)
+elseif i.kind=="connection"then
+j.connection={
+enabled=ReadConnectionField(h,"Enabled"),
+luaConnection=ReadConnectionField(h,"LuaConnection"),
+foreignState=ReadConnectionField(h,"ForeignState"),
+functionValue=f:Encode(ReadConnectionField(h,"Function")),
+threadValue=f:Encode(ReadConnectionField(h,"Thread")),
+}
+else
+j.value=f:Encode(h)
+end
+return j
+end)
+
+d:BindToTypeStructured("runtime-read",function(g)
+local h,i=e:Resolve(g.handle)
+local j=g.member
+local k
+if j=="field"then
+assert(i.kind=="table","field reads require a table handle.")
+k=rawget(h,f:Decode(g.key))
+elseif j=="property"then
+assert(i.kind=="instance","property reads require an Instance handle.")
+assert(type(g.property)=="string"and string.match(g.property,"^[%a_][%w_]*$"),"Invalid property name.")
+k=h[g.property]
+elseif j=="upvalue"then
+assert(i.kind=="function","upvalue reads require a function handle.")
+local l,m=SafeFunctionCollection(h,getupvalues,"getupvalues")
+assert(l,m)
+k=l[g.index]
+elseif j=="constant"then
+assert(i.kind=="function","constant reads require a function handle.")
+local l,m=SafeFunctionCollection(h,getconstants,"getconstants")
+assert(l,m)
+k=l[g.index]
+elseif j=="prototype"then
+assert(i.kind=="function","prototype reads require a function handle.")
+local l,m=SafeFunctionCollection(h,getprotos,"getprotos")
+assert(l,m)
+k=l[g.index]
+elseif j=="metatable"then
+local l=if type(getrawmetatable)=="function"then getrawmetatable else getmetatable
+k=l(h)
+else
+error("Unknown runtime member: "..tostring(j))
+end
+return{handle=g.handle,member=j,value=f:Encode(k)}
+end)
+
+d:BindToTypeStructured("runtime-write",function(g)
+local h,i=e:Resolve(g.handle)
+local j=g.member
+local k=f:Decode(g.value)
+local l
+if j=="field"then
+assert(i.kind=="table","field writes require a table handle.")
+local m=f:Decode(g.key)
+l=rawget(h,m)
+rawset(h,m,k)
+elseif j=="property"then
+assert(i.kind=="instance","property writes require an Instance handle.")
+assert(type(g.property)=="string"and string.match(g.property,"^[%a_][%w_]*$"),"Invalid property name.")
+l=h[g.property]
+h[g.property]=k
+elseif j=="upvalue"then
+assert(i.kind=="function","upvalue writes require a function handle.")
+local m,n=SafeFunctionCollection(h,getupvalues,"getupvalues")
+assert(m,n)
+l=m[g.index]
+local o=FunctionGetter(setupvalue,"setupvalue")
+assert(o,"Executor does not expose setupvalue.")
+local p,q=pcall(o,h,g.index,k)
+assert(p,tostring(q))
+elseif j=="constant"then
+assert(i.kind=="function","constant writes require a function handle.")
+local m,n=SafeFunctionCollection(h,getconstants,"getconstants")
+assert(m,n)
+l=m[g.index]
+local o=FunctionGetter(setconstant,"setconstant")
+assert(o,"Executor does not expose setconstant.")
+local p,q=pcall(o,h,g.index,k)
+assert(p,tostring(q))
+else
+error("Unknown writable runtime member: "..tostring(j))
+end
+return{
+handle=g.handle,
+member=j,
+previous=f:Encode(l),
+value=f:Encode(k),
+written=true,
+}
+end)
+
+d:BindToTypeStructured("runtime-call",function(g)
+local h,i=e:Resolve(g.handle)
+assert(i.kind=="function"or i.kind=="table","runtime-call requires a function or callable table handle.")
+local j={}
+local k=#(g.arguments or{})
+for l,m in g.arguments or{}do
+assert(l<=32,"runtime-call accepts at most 32 arguments.")
+j[l]=f:Decode(m)
+end
+
+local l=FirstFunction(setthreadidentity,setidentity,setthreadcontext)
+local m=FirstFunction(getthreadidentity,getidentity,getthreadcontext)
+local n
+local o=false
+local p=false
+if g.threadIdentity~=nil then
+assert(l~=nil,"This executor does not expose a thread-identity setter.")
+if m then pcall(function()n=m()end)end
+if n==nil then
+n=8
+p=true
+end
+local q,r=pcall(l,g.threadIdentity)
+assert(q,"Setting thread identity failed: "..tostring(r))
+o=true
+end
+local q=table.pack(pcall(h,table.unpack(j,1,k)))
+if o then pcall(l,n)end
+if q[1]~=true then
+return{
+handle=g.handle,
+success=false,
+error=tostring(q[2]),
+identityRestoreAssumed=p or nil,
+}
+end
+local r={}
+for s=2,math.min(q.n,33)do table.insert(r,(f:Encode(q[s])))end
+return{
+handle=g.handle,
+success=true,
+resultCount=q.n-1,
+results=r,
+resultsTruncated=q.n-1>#r,
+identityRestoreAssumed=p or nil,
+}
+end)
+
+d:BindToTypeStructured("runtime-release",function(g)
+local h,i=e:ReleaseMany(g.handles)
+return{released=h,missing=i,registry=e:Stats()}
+end)
+
+d:BindToTypeStructured("runtime-handles",function(g)
+local h=e:List(g.cursor,g.limit,g.kind)
+h.registry=e:Stats()
+return h
+end)
+end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local function ClampInteger(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.max(e,math.min(f,math.floor(g)))
+end
+
+local function AddEnvironment(c,d,e,f,g,h)
+if type(g)~="table"then return end
+local i=e:Register(g,"table",{environment=f})
+if d[i]then return end
+d[i]=true
+table.insert(c,{name=f,handle=i,quality=h or"exact"})
+end
+
+return function(c,d)
+local e=c.RuntimeHandles
+local f=c.RuntimeValues
+
+d:BindToTypeStructured("runtime-environments",function(g)
+local h=g.operation or"list"
+if h=="list"then
+local i={}
+local j={}
+AddEnvironment(i,j,e,"getgenv",getgenv(),"exact")
+if type(getrenv)=="function"then
+local k,l=pcall(getrenv)
+if k then AddEnvironment(i,j,e,"getrenv",l,"best-effort")end
+end
+if type(getfenv)=="function"then
+local k,l=pcall(getfenv,0)
+if k then AddEnvironment(i,j,e,"getfenv(0)",l,"best-effort")end
+end
+AddEnvironment(i,j,e,"_G",_G,"roblox-api")
+AddEnvironment(i,j,e,"shared",shared,"roblox-api")
+return{environments=i,count=#i}
+end
+
+if h=="script"then
+assert(type(getsenv)=="function","This executor does not expose getsenv.")
+local i=b.Resolve(g.target)
+local j,k=pcall(getsenv,i)
+assert(j and type(k)=="table","getsenv failed: "..tostring(k))
+local l=e:Register(k,"table",{
+environment="script",
+scriptPath=b.StablePath(i),
+})
+return{
+operation=h,
+script=b.Describe(i),
+environment={type="handle",kind="table",handle=l},
+}
+end
+
+if h=="handle"then
+assert(type(getfenv)=="function","This executor does not expose getfenv.")
+local i=e:Resolve(g.handle)
+local j,k=pcall(getfenv,i)
+assert(j and type(k)=="table","getfenv failed: "..tostring(k))
+return{
+operation=h,
+sourceHandle=g.handle,
+environment=f:Encode(k),
+}
+end
+error("Unknown runtime-environments operation: "..tostring(h))
+end)
+
+d:BindToTypeStructured("runtime-scripts",function(g)
+local h=g.operation or"list"
+if h=="closure"then
+assert(type(getscriptclosure)=="function","This executor does not expose getscriptclosure.")
+local i=b.Resolve(g.target)
+local j,k=pcall(getscriptclosure,i)
+assert(j and type(k)=="function","getscriptclosure failed: "..tostring(k))
+return{
+operation=h,
+script=b.Describe(i),
+closure=f:Encode(k),
+}
+end
+
+assert(h=="list","Unknown runtime-scripts operation: "..tostring(h))
+local i=g.collection or"scripts"
+local j
+if i=="scripts"then j=getscripts end
+if i=="running"then j=getrunningscripts end
+if i=="loaded-modules"then j=getloadedmodules end
+if i=="nil-instances"then j=getnilinstances end
+if i=="all-instances"then j=getinstances end
+assert(type(j)=="function","This executor does not expose the requested "..i.." inventory.")
+
+local k,l=pcall(j)
+assert(k and type(l)=="table",i.." inventory failed: "..tostring(l))
+local m=ClampInteger(g.cursor,0,0,1000000000)
+local n=ClampInteger(g.limit,50,1,200)
+local o=m+n+1
+local p={}
+local q=0
+local r=0
+local s=false
+for t,u in l do
+r+=1
+if r%500==0 then task.wait()end
+if typeof(u)~="Instance"then continue end
+if q>=m and#p<n then
+local v=b.Describe(u)
+v.Handle=e:Register(u,"instance",{
+className=v.ClassName,
+path=v.Path,
+})
+if g.includeHashes==true then
+if type(getscripthash)=="function"and u:IsA"LuaSourceContainer"then
+pcall(function()v.ScriptHash=getscripthash(u)end)
+end
+if type(getscriptbytecode)=="function"and u:IsA"LuaSourceContainer"then
+local w,x=pcall(getscriptbytecode,u)
+if w and type(x)=="string"then v.BytecodeBytes=#x end
+end
+end
+table.insert(p,v)
+end
+q+=1
+if q>=o then
+s=true
+break
+end
+end
+local t=m+#p
+return{
+operation=h,
+collection=i,
+total=q,
+totalIsLowerBound=s,
+sourceReturnedByExecutor=#l,
+sourceScanned=r,
+cursor=m,
+nextCursor=(s or t<q)and t or nil,
+results=p,
+}
+end)
+end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local function ClampInteger(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.max(e,math.min(f,math.floor(g)))
+end
+
+local function ResolveActor(c,d)
+if c.handle then
+local e=d:Resolve(c.handle)
+assert(typeof(e)=="Instance"and e:IsA"Actor","Actor handle does not reference an Actor Instance.")
+return e
+end
+local e=b.Resolve(c.target)
+assert(e:IsA"Actor","Target Instance is not an Actor.")
+return e
+end
+
+return function(c,d)
+local e=c.RuntimeHandles
+local f=c.RuntimeValues
+
+d:BindToTypeStructured("property-access",function(g)
+local h=b.Resolve(g.target)
+local i=g.property
+assert(type(i)=="string"and string.match(i,"^[%a_][%w_]*$"),"Invalid property name.")
+local j=g.operation or"read"
+
+if j=="read"then
+local k,l=pcall(function()return h[i]end)
+local m=false
+local n
+local o
+if not k and type(gethiddenproperty)=="function"then
+m,n,o=pcall(gethiddenproperty,h,i)
+end
+assert(k or m,"Property read failed: "..tostring(l).."; "..tostring(n))
+local p=m and n or l
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+accessMethod=m and"gethiddenproperty"or"ordinary",
+hidden=m and o==true or nil,
+value=f:Encode(p),
+}
+end
+
+if j=="write"then
+local k=f:Decode(g.value)
+local l
+local m,n=pcall(function()return h[i]end)
+if not m and type(gethiddenproperty)=="function"then
+m,n=pcall(gethiddenproperty,h,i)
+end
+if m then l=n end
+
+local o=false
+local p
+if g.preferHidden~=false and type(sethiddenproperty)=="function"then
+o,p=pcall(sethiddenproperty,h,i,k)
+end
+if not o then
+local q,r=pcall(function()h[i]=k end)
+assert(q,"Property write failed: "..tostring(p).."; "..tostring(r))
+end
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+accessMethod=o and"sethiddenproperty"or"ordinary",
+previous=f:Encode(l),
+value=f:Encode(k),
+written=true,
+}
+end
+
+if j=="scriptable-status"then
+assert(type(isscriptable)=="function","This executor does not expose isscriptable.")
+local k,l=pcall(isscriptable,h,i)
+assert(k,"isscriptable failed: "..tostring(l))
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+scriptable=l==true,
+}
+end
+
+if j=="set-scriptable"then
+assert(type(setscriptable)=="function","This executor does not expose setscriptable.")
+local k,l=pcall(setscriptable,h,i,g.scriptable==true)
+assert(k,"setscriptable failed: "..tostring(l))
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+previous=l,
+scriptable=g.scriptable==true,
+}
+end
+error("Unknown property-access operation: "..tostring(j))
+end)
+
+d:BindToTypeStructured("callback-inspect",function(g)
+local h=b.Resolve(g.target)
+local i=g.property
+assert(type(i)=="string"and string.match(i,"^[%a_][%w_]*$"),"Invalid callback property name.")
+local j=g.operation or"inspect"
+
+local k
+local l
+if type(getcallbackvalue)=="function"then
+k,l=pcall(getcallbackvalue,h,i)
+end
+if not k then k,l=pcall(function()return h[i]end)end
+assert(k,"Callback property could not be read: "..tostring(l))
+
+if j=="inspect"then
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+callback=f:Encode(l),
+callbackType=typeof(l),
+}
+end
+
+if j=="replace"then
+local m=f:Decode(g.value)
+assert(m==nil or type(m)=="function","Callback replacement must be nil or a function handle.")
+local n,o=pcall(function()h[i]=m end)
+assert(n,"Callback replacement failed: "..tostring(o))
+return{
+operation=j,
+target=b.Describe(h),
+property=i,
+previous=f:Encode(l),
+callback=f:Encode(m),
+replaced=true,
+}
+end
+error("Unknown callback-inspect operation: "..tostring(j))
+end)
+
+d:BindToTypeStructured("runtime-actors",function(g)
+local h=g.operation or"list"
+if h=="list"then
+assert(type(getactors)=="function","This executor does not expose getactors.")
+local i,j=pcall(getactors)
+assert(i and type(j)=="table","getactors failed: "..tostring(j))
+local k=ClampInteger(g.cursor,0,0,1000000000)
+local l=ClampInteger(g.limit,50,1,200)
+local m={}
+for n=k+1,math.min(#j,k+l)do
+local o=j[n]
+if typeof(o)=="Instance"then
+local p=b.Describe(o)
+p.Handle=e:Register(o,"instance",{
+className=p.ClassName,
+path=p.Path,
+actor=true,
+})
+table.insert(m,p)
+end
+end
+local n=k+#m
+return{
+operation=h,
+total=#j,
+cursor=k,
+nextCursor=n<#j and n or nil,
+actors=m,
+}
+end
+
+if h=="threads"then
+assert(type(getactorthreads)=="function","This executor does not expose getactorthreads.")
+local i=ResolveActor(g,e)
+local j,k=pcall(getactorthreads,i)
+assert(j and type(k)=="table","getactorthreads failed: "..tostring(k))
+local l={}
+for m,n in k do
+if m>500 then break end
+table.insert(l,(f:Encode(n)))
+end
+return{
+operation=h,
+actor=b.Describe(i),
+threadCount=#k,
+threads=l,
+truncated=#k>#l,
+}
+end
+error("Unknown runtime-actors operation: "..tostring(h))
+end)
+end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+
+return function(b,c)
+local d=b.GcExplorer
+
+c:BindToTypeStructured("gc-snapshot",function(e)
+local f=e.operation or"create"
+if f=="create"then return d:CreateSnapshot(e)end
+if f=="list"then return d:ListSnapshots()end
+if f=="release"then return d:ReleaseSnapshot(e.snapshotId)end
+error("Unknown gc-snapshot operation: "..tostring(f))
+end)
+
+c:BindToTypeStructured("gc-query",function(e)
+return d:Query(e)
+end)
+
+c:BindToTypeStructured("gc-diff",function(e)
+return d:Diff(e)
+end)
+
+c:BindToTypeStructured("gc-statistics",function(e)
+return d:Statistics(e)
+end)
+
+c:BindToTypeStructured("runtime-references",function(e)
+return d:References(e)
+end)
+end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
+
+local function ClampInteger(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.max(e,math.min(f,math.floor(g)))
+end
+
+local function ReadField(c,d)
+local e,f=pcall(function()return c[d]end)
+return e and f or nil
+end
+
+local function DescribeConnection(c,d,e)
+local f=d:Register(c,"connection")
+return{
+handle=f,
+enabled=ReadField(c,"Enabled"),
+connected=ReadField(c,"Connected"),
+luaConnection=ReadField(c,"LuaConnection"),
+foreignState=ReadField(c,"ForeignState"),
+functionValue=e:Encode(ReadField(c,"Function")),
+threadValue=e:Encode(ReadField(c,"Thread")),
+operations={
+enable=type(ReadField(c,"Enable"))=="function",
+disable=type(ReadField(c,"Disable"))=="function",
+disconnect=type(ReadField(c,"Disconnect"))=="function",
+fire=type(ReadField(c,"Fire"))=="function",
+defer=type(ReadField(c,"Defer"))=="function",
+},
+}
+end
+
+local function ResolveSignal(c,d)
+local e=b.Resolve(c)
+assert(type(d)=="string"and string.match(d,"^[%a_][%w_]*$"),"Invalid signal name.")
+local f,g=pcall(function()return e[d]end)
+assert(f and typeof(g)=="RBXScriptSignal",d.." is not an RBXScriptSignal on the target Instance.")
+return e,g
+end
+
+return function(c,d)
+local e=c.RuntimeHandles
+local f=c.RuntimeValues
+
+d:BindToTypeStructured("signal-connections",function(g)
+local h=g.operation or"list"
+if h=="list"then
+assert(type(getconnections)=="function","This executor does not expose getconnections.")
+local i,j=ResolveSignal(g.target,g.signal)
+local k,l=pcall(getconnections,j)
+assert(k and type(l)=="table","getconnections failed: "..tostring(l))
+local m=ClampInteger(g.cursor,0,0,1000000000)
+local n=ClampInteger(g.limit,50,1,200)
+local o={}
+for p=m+1,math.min(#l,m+n)do
+table.insert(o,DescribeConnection(l[p],e,f))
+end
+local p=m+#o
+return{
+operation=h,
+target=b.Describe(i),
+signal=g.signal,
+signalHandle=e:Register(j,"signal",{
+path=b.StablePath(i),
+signal=g.signal,
+}),
+total=#l,
+cursor=m,
+nextCursor=p<#l and p or nil,
+connections=o,
+}
+end
+
+if h=="fire-signal"then
+assert(type(firesignal)=="function","This executor does not expose firesignal.")
+local i,j=ResolveSignal(g.target,g.signal)
+local k={}
+local l=#(g.arguments or{})
+for m,n in g.arguments or{}do
+assert(m<=32,"At most 32 signal arguments are accepted.")
+k[m]=f:Decode(n)
+end
+local m,n=pcall(firesignal,j,table.unpack(k,1,l))
+assert(m,"firesignal failed: "..tostring(n))
+return{operation=h,target=b.Describe(i),signal=g.signal,fired=true}
+end
+
+local i=e:Resolve(g.handle,"connection")
+if h=="inspect"then return DescribeConnection(i,e,f)end
+
+local j=({
+enable="Enable",
+disable="Disable",
+disconnect="Disconnect",
+fire="Fire",
+defer="Defer",
+})[h]
+assert(j~=nil,"Unknown signal-connections operation: "..tostring(h))
+local k=ReadField(i,j)
+assert(type(k)=="function","Connection does not support "..j..".")
+local l={}
+local m=#(g.arguments or{})
+for n,o in g.arguments or{}do
+assert(n<=32,"At most 32 connection arguments are accepted.")
+l[n]=f:Decode(o)
+end
+local n,o=pcall(k,i,table.unpack(l,1,m))
+assert(n,j.." failed: "..tostring(o))
+local p=DescribeConnection(i,e,f)
+p.operation=h
+p.completed=true
+return p
+end)
+end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
+
+local b=a.c()
 
 return function(c,d)
 local e=c.VirtualInputManager
@@ -4691,10 +6835,10 @@ if h.action=="click-detector"then return FireDetector(h)end
 if h.action=="touch"then return FireTouch(h)end
 error("Unsupported input action: "..tostring(h.action))
 end)
-end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
+end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
 
-local b=a.o()
-local c=a.r()
+local b=a.c()
+local c=a.v()
 
 local d="__ROBLOX_MCP_EVENT_JOURNAL_V2"
 local e="__ROBLOX_MCP_EVENT_JOURNAL_V1"
@@ -5158,7 +7302,7 @@ return WaitForRemote(w)
 end
 error("Unsupported wait mode: "..tostring(w.mode))
 end)
-end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
+end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CreateBridge
@@ -5207,18 +7351,24 @@ g()
 end
 end
 
-local o={a.n()
-,a.p()
-,a.q()
-,a.s()
+local o={a.s()
 ,a.t()
 ,a.u()
-,a.v()
 ,a.w()
 ,a.x()
 ,a.y()
 ,a.z()
 ,a.A()
+,a.B()
+,a.C()
+,a.D()
+,a.E()
+,a.F()
+,a.G()
+,a.H()
+,a.I()
+,a.J()
+,a.K()
 ,
 }
 for p,q in o do
@@ -5232,7 +7382,7 @@ e.bridge=nil
 end
 task.wait(1)
 end
-end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end end
+end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end end
 
 
 
@@ -5545,7 +7695,32 @@ clientToken=getgenv().MCP_ClientToken,
 end
 
 
-local A=a.b(){
+
+local A=a.b().new{
+RegistryId=GenerateSessionGuid(),
+MaxHandles=getgenv().MCP_RuntimeMaxHandles,
+DefaultTtlSeconds=getgenv().MCP_RuntimeHandleTtlSeconds,
+}
+local B=a.d().new{
+Handles=A,
+DefaultDepth=getgenv().MCP_RuntimeValueDepth,
+DefaultEntries=getgenv().MCP_RuntimeValueEntries,
+DefaultStringBytes=getgenv().MCP_RuntimeValueStringBytes,
+}
+local C=a.e().new{
+ConnectorVersion="2",
+WebSocketAvailable=z,
+}
+local D=a.f().new{
+Handles=A,
+TypedValues=B,
+MaxSnapshots=getgenv().MCP_GcMaxSnapshots,
+DefaultScanLimit=getgenv().MCP_GcDefaultScanLimit,
+TableScanLimit=getgenv().MCP_GcTableScanLimit,
+}
+
+
+local E=a.g(){
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeWebSocketURL=d,
@@ -5557,48 +7732,48 @@ GetRegistrationInfo=GetRegistrationInfo,
 SanitizeForOutput=SanitizeForOutput,
 LuaEncode=r,
 }
-local B=A.CreateBridge
+local F=E.CreateBridge
 
 
-local C=a.c()
-local D=a.d()
-local E=a.e()
-local F=a.f()
-local G=a.g()
-local H=D.new()
-local I=math.max(
+local G=a.h()
+local H=a.i()
+local I=a.j()
+local J=a.k()
+local K=a.l()
+local L=H.new()
+local M=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_ScriptMappingWorkers)or 24),64)
 )
-local J=a.h().new(
-H,
-I
+local N=a.m().new(
+L,
+M
 )
-local K=math.max(
+local O=math.max(
 5,
 math.min(tonumber(getgenv().MCP_FailedScriptResyncInterval)or 30,600)
 )
-local L=a.i().new(H,{
-IntervalSeconds=K,
-MaxDelaySeconds=math.max(K,300),
+local P=a.n().new(L,{
+IntervalSeconds=O,
+MaxDelaySeconds=math.max(O,300),
 BatchSize=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_FailedScriptResyncBatchSize)or 8),32)
 ),
 })
-local M=a.j().new(
-H,
-L
+local Q=a.o().new(
+L,
+P
 )
-local N=a.k(){
-ScriptMappingPipeline=H,
+local R=a.p(){
+ScriptMappingPipeline=L,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
-JobStatus=M,
+JobStatus=Q,
 }
-local O=a.l(){
-ScriptMappingPipeline=H,
+local S=a.q(){
+ScriptMappingPipeline=L,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
@@ -5606,79 +7781,83 @@ StripDecompilerBanner=StripDecompilerBanner,
 base64_encode=o,
 BuiltInDecompile=q,
 GetScriptHash=p,
-DecompilerAttemptState=F,
-PreparedScript=G,
-Concurrency=J,
+DecompilerAttemptState=J,
+PreparedScript=K,
+Concurrency=N,
 }
-local P=a.m(){
-ScriptMappingPipeline=H,
-WorkerPool=C,
-UploadSession=E,
+local T=a.r(){
+ScriptMappingPipeline=L,
+WorkerPool=G,
+UploadSession=I,
 GenerateSessionGuid=GenerateSessionGuid,
 CoreGui=i,
 CorePackages=j,
 ScriptContext=k,
 getnilinstances=x,
-WorkerCount=I,
-Concurrency=J,
-JobStatus=M,
-FailedResync=L,
-UploadClient=N,
-DecompilerClient=O,
+WorkerCount=M,
+Concurrency=N,
+JobStatus=Q,
+FailedResync=P,
+UploadClient=R,
+DecompilerClient=S,
 }
-local Q=N.StartUploadQueue
+local U=R.StartUploadQueue
 local function PublishScriptMappingStatus()
-M:Publish()
+Q:Publish()
 end
-local R=P.StartScriptMapping
-local S=P.StartFailedScriptResync
-local T=P.ResetScriptMappingState
-local U=P.ResumeDeferredScriptMappings
-local V=P.GetScriptByDebugId
-local W=P.QueueMappedScriptSource
-local X=P.DecompileScriptSource
+local V=T.StartScriptMapping
+local W=T.StartFailedScriptResync
+local X=T.ResetScriptMappingState
+local Y=T.ResumeDeferredScriptMappings
+local Z=T.GetScriptByDebugId
+local aa=T.QueueMappedScriptSource
+local ab=T.DecompileScriptSource
 
-local function WaitForBridgeClientId(Y)
-local Z=os.clock()+5
+local function WaitForBridgeClientId(ac)
+local ad=os.clock()+5
 repeat
-if Y.ClientId then
-return Y.ClientId
+if ac.ClientId then
+return ac.ClientId
 end
-if not Y.Connected then
+if not ac.Connected then
 return nil
 end
 task.wait(0.05)
-until os.clock()>Z
+until os.clock()>ad
 
 return nil
 end
 
 getgenv().MCP_Loaded=true
 getgenv().MCP_Loading=nil
-local Y,Z=pcall(function()a.B()
+local ac,ad=pcall(function()a.L()
 {
-CreateBridge=B,
+CreateBridge=F,
 WaitForBridgeClientId=WaitForBridgeClientId,
-ScriptMappingPipeline=H,
-StartUploadQueue=Q,
+ScriptMappingPipeline=L,
+StartUploadQueue=U,
 PublishScriptMappingStatus=PublishScriptMappingStatus,
-ResetScriptMappingState=T,
-StartScriptMapping=R,
-StartFailedScriptResync=S,
-ResumeDeferredScriptMappings=U,
-GetScriptByDebugId=V,
-DecompileScriptSource=X,
-QueueMappedScriptSource=W,
+ResetScriptMappingState=X,
+StartScriptMapping=V,
+StartFailedScriptResync=W,
+ResumeDeferredScriptMappings=Y,
+GetScriptByDebugId=Z,
+DecompileScriptSource=ab,
+QueueMappedScriptSource=aa,
 LogService=m,
 MarketplaceService=h,
 VirtualInputManager=g,
 Players=n,
 LuaEncode=r,
 WebSocketAvailable=z,
+RuntimeHandles=A,
+RuntimeValues=B,
+RuntimeCapabilities=C,
+GcExplorer=D,
 }
 end)
-if not Y then
+if not ac then
 getgenv().MCP_Loaded=nil
 getgenv().MCP_Loading=nil
-error(Z)
+error(ad)
 end

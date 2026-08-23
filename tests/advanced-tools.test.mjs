@@ -9,6 +9,20 @@ import {
   waitForEventInputSchema,
 } from "../dist/tools/impl/advanced/schemas.js";
 import {
+  callbackInspectInputSchema,
+  gcQueryInputSchema,
+  gcSnapshotInputSchema,
+  propertyAccessInputSchema,
+  runtimeActorsInputSchema,
+  runtimeCallInputSchema,
+  runtimeInspectInputSchema,
+  runtimeReadInputSchema,
+  runtimeReferencesInputSchema,
+  runtimeScriptsInputSchema,
+  runtimeWriteInputSchema,
+  signalConnectionsInputSchema,
+} from "../dist/tools/impl/runtime/schemas.js";
+import {
   buildListScriptsResult,
   listScriptsInputSchema,
 } from "../dist/tools/impl/advanced/list-scripts.js";
@@ -87,6 +101,72 @@ test("advanced tool schemas enforce bounded discriminated inputs", () => {
     direction: "Outgoing",
     remoteDebugId: "debug-id",
   }).success, true);
+
+  assert.equal(runtimeInspectInputSchema.safeParse({ handle: "rh_session_1_1" }).success, true);
+  assert.equal(runtimeInspectInputSchema.safeParse({ handle: "not a handle" }).success, false);
+  assert.equal(runtimeReadInputSchema.safeParse({
+    member: "field",
+    handle: "rh_session_1_1",
+    key: "Inventory",
+  }).success, true);
+  assert.equal(runtimeWriteInputSchema.safeParse({
+    member: "upvalue",
+    handle: "rh_session_1_1",
+    index: 1,
+    value: { type: "number", value: 10 },
+  }).success, true);
+  assert.equal(runtimeWriteInputSchema.safeParse({
+    member: "field",
+    handle: "rh_session_1_1",
+    key: "Inventory",
+  }).success, false);
+  assert.equal(runtimeCallInputSchema.safeParse({
+    handle: "rh_session_1_1",
+    arguments: Array.from({ length: 33 }, () => 1),
+  }).success, false);
+  assert.equal(gcSnapshotInputSchema.safeParse({
+    operation: "create",
+    scanLimit: 100000,
+  }).success, true);
+  assert.equal(gcSnapshotInputSchema.safeParse({
+    operation: "create",
+    scanLimit: 100001,
+  }).success, false);
+  assert.equal(gcQueryInputSchema.safeParse({
+    snapshotId: "gs_session_1",
+    kind: "function",
+    sourceContains: "Controller",
+  }).success, true);
+  assert.equal(runtimeReferencesInputSchema.safeParse({
+    snapshotId: "gs_session_1",
+    handle: "rh_session_1_1",
+    direction: "both",
+  }).success, true);
+  assert.equal(runtimeScriptsInputSchema.safeParse({
+    operation: "list",
+    collection: "loaded-modules",
+  }).success, true);
+  assert.equal(signalConnectionsInputSchema.safeParse({
+    operation: "list",
+    target: { path: "game.Players.LocalPlayer" },
+    signal: "CharacterAdded",
+  }).success, true);
+  assert.equal(propertyAccessInputSchema.safeParse({
+    operation: "write",
+    target: { path: "workspace.Part" },
+    property: "Transparency",
+    value: 0.5,
+  }).success, true);
+  assert.equal(callbackInspectInputSchema.safeParse({
+    operation: "inspect",
+    target: { path: "workspace.Function" },
+    property: "OnInvoke",
+  }).success, true);
+  assert.equal(runtimeActorsInputSchema.safeParse({
+    operation: "threads",
+    handle: "rh_session_1_1",
+    target: { path: "workspace.Actor" },
+  }).success, false);
 });
 
 test("list-scripts returns stable bounded metadata pages without source by default", () => {

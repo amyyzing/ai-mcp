@@ -59,12 +59,22 @@ Set these in Roblox **before** running the connector:
 | `getgenv().DisableInitialScriptDecompMapping` | unset | Legacy compatibility: explicit `false` opts in; `true` disables initial mapping |
 | `getgenv().MCP_FailedScriptResyncInterval` | `30` | Seconds before the first failed-script resync; repeated failures back off to five minutes |
 | `getgenv().MCP_FailedScriptResyncBatchSize` | `8` | Maximum failed scripts queued by one periodic resync tick |
+| `getgenv().MCP_RuntimeMaxHandles` | `50000` | Maximum active runtime handles (100-200000); old handles are evicted in creation order when full |
+| `getgenv().MCP_RuntimeHandleTtlSeconds` | `1800` | Idle lifetime for pinned runtime handles (30-7200 seconds) |
+| `getgenv().MCP_RuntimeValueDepth` | `3` | Maximum inline tagged-table depth (0-8); deeper objects become handles |
+| `getgenv().MCP_RuntimeValueEntries` | `100` | Default tagged-value entry budget (1-1000) |
+| `getgenv().MCP_RuntimeValueStringBytes` | `4096` | Default UTF-8 string budget per runtime value |
+| `getgenv().MCP_GcMaxSnapshots` | `8` | Retained GC snapshot manifests (2-32) |
+| `getgenv().MCP_GcDefaultScanLimit` | `20000` | Default number of executor GC objects considered by a snapshot |
+| `getgenv().MCP_GcTableScanLimit` | `250` | Default number of table entries sampled for signatures and predicates |
 
 For a remote bridge, append `?token=` plus `HttpService:UrlEncode(getgenv().MCPAuthToken)` to the initial `/script.luau` download URL. The connector then authenticates its WebSocket and HTTP fallback requests automatically.
 
 Failed script mappings are retried automatically in bounded batches. A resync prioritizes the provider that the original attempt actually reached, then uses the configured provider order as fallback.
 
 Initial full-game script indexing is opt-in because it can be expensive in large experiences. Start it on demand with the `script-index-start` tool, rebuild it with `script-index-resync`, or set `getgenv().EnableInitialScriptDecompMapping = true` before loading the connector.
+
+Runtime handles are scoped to one connector generation and never silently reused. GC snapshot indexing initially stores weak object references; a handle becomes pinned when a query returns it or another tool explicitly uses it. Every snapshot/query page reports scan counts, cursors, stale handles, and truncation state so executor visibility limits remain distinguishable from an empty result.
 
 The connector supports two transport modes:
 - **WebSocket** (preferred) — persistent connection, lower latency

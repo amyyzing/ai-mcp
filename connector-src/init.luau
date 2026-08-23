@@ -308,6 +308,31 @@ local function GetRegistrationInfo()
     }
 end
 
+-- Shared executor-runtime services live for the full connector session rather
+-- than one transport, so handles survive WebSocket/HTTP reconnects.
+local RuntimeHandles = require("./runtime/handles").new({
+    RegistryId = GenerateSessionGuid(),
+    MaxHandles = getgenv().MCP_RuntimeMaxHandles,
+    DefaultTtlSeconds = getgenv().MCP_RuntimeHandleTtlSeconds,
+})
+local RuntimeValues = require("./runtime/typed-values").new({
+    Handles = RuntimeHandles,
+    DefaultDepth = getgenv().MCP_RuntimeValueDepth,
+    DefaultEntries = getgenv().MCP_RuntimeValueEntries,
+    DefaultStringBytes = getgenv().MCP_RuntimeValueStringBytes,
+})
+local RuntimeCapabilities = require("./runtime/capabilities").new({
+    ConnectorVersion = "2",
+    WebSocketAvailable = WebSocketAvailable,
+})
+local GcExplorer = require("./runtime/gc-explorer").new({
+    Handles = RuntimeHandles,
+    TypedValues = RuntimeValues,
+    MaxSnapshots = getgenv().MCP_GcMaxSnapshots,
+    DefaultScanLimit = getgenv().MCP_GcDefaultScanLimit,
+    TableScanLimit = getgenv().MCP_GcTableScanLimit,
+})
+
 --// Bridge client \\--
 local BridgeClient = require("./bridge/client")({
     HttpService = HttpService,
@@ -439,6 +464,10 @@ local runtimeSuccess, runtimeError = pcall(function()
         Players = Players,
         LuaEncode = LuaEncode,
         WebSocketAvailable = WebSocketAvailable,
+        RuntimeHandles = RuntimeHandles,
+        RuntimeValues = RuntimeValues,
+        RuntimeCapabilities = RuntimeCapabilities,
+        GcExplorer = GcExplorer,
     })
 end)
 if not runtimeSuccess then

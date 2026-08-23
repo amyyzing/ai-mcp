@@ -14,7 +14,7 @@ Apply these defaults unless the task meets an exception in [references/runtime-p
 1. Prefer a specialized read tool over arbitrary Luau.
 2. Use `search-instances` for filtered instance discovery. It runs `QueryDescendants`; do not fetch every descendant and filter it manually.
 3. In custom Luau, use `QueryDescendants` for selector-expressible instance filters instead of a `GetDescendants()` scan.
-4. Use `search-gc` for a compact first-match garbage-collector search. Its output and compatibility scan are bounded, but executor-native `filtergc`/`getgc` can still allocate or traverse an internal GC snapshot. Use raw `filtergc` only when its structured criteria cannot express the probe.
+4. Use `search-gc` for one compact first match. Use `gc-snapshot` + `gc-query` when the task needs reusable handles, pages, diffs, statistics, or reference traversal. Use raw `filtergc` only when neither structured query surface can express the predicate.
 5. Use `get-data-by-code` when the task needs values returned from Luau. Return compact raw Lua values; do not print data through `execute` or JSON-encode it manually.
 6. Use `execute` or `execute-file` only for intentional side effects or code that does not need to return data. Verify the effect with a focused read.
 
@@ -29,7 +29,7 @@ Apply these defaults unless the task meets an exception in [references/runtime-p
    - Unknown implementation with known behavior: `semantic-search-scripts`. Confirm remote embedding upload only when the configured endpoint is trusted; local Ollama stays local.
    - Source: `get-script-content` with a focused line range.
    - Arbitrary compact values: `get-data-by-code`.
-   - GC functions/tables: `search-gc` with narrow criteria; it intentionally returns only the first match.
+   - One GC function/table: `search-gc`. Deeper runtime investigation: `executor-capabilities`, then `gc-snapshot`, `gc-query`, and `runtime-inspect`/`runtime-references`.
 3. Reduce the root, selector, range, filters, and limit before increasing any output budget.
 4. For GC or custom instance probes, follow [references/runtime-patterns.md](references/runtime-patterns.md).
 5. Mutate only when the user's request authorizes mutation. Use `execute` or `execute-file`, then verify the resulting state with a specialized read, a targeted `get-data-by-code` probe, or a small console read.

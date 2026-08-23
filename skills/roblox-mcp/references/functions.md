@@ -17,6 +17,7 @@ Do not use `execute` plus `print` as a substitute for returned data.
 - `list-clients`: List connected Roblox clients and their IDs.
 - `set-active-client`: Route later calls to one client.
 - `runtime-status`: Probe routing, latency, executor capabilities, script sync, and decompiler health.
+- `executor-capabilities`: Probe detailed executor APIs before choosing GC, debug, signal, callback, hidden-property, or Actor operations.
 
 ## Inspection and search
 
@@ -32,12 +33,20 @@ Do not use `execute` plus `print` as a substitute for returned data.
 - `get-console-output`: Read recent developer-console logs.
 - `get-data-by-code`: Run a small Luau probe and return serialized raw values. The code must `return` its result.
 - `search-gc`: Return the first structured `filtergc` match with bounded summaries and fallback iteration. Executor-native snapshot allocation is outside the tool's control.
+- `gc-snapshot`, `gc-query`, `gc-diff`, `gc-statistics`: Build and investigate reusable GC indexes when one first match is insufficient.
+- `runtime-inspect`, `runtime-read`, `runtime-references`: Page tables/functions and follow GC reference edges through generation-scoped handles.
+- `runtime-handles`, `runtime-release`: Inspect handle-registry state and release retained runtime objects.
+- `runtime-environments`, `runtime-scripts`, `runtime-actors`: Discover executor/Roblox environments, loaded or running scripts/modules, nil instances, Actors, and Actor threads.
+- `signal-connections`: Inspect or control executor-visible signal connections.
+- `callback-inspect`: Inspect or replace callback properties such as `OnInvoke` using function handles.
+- `property-access`: Read/write ordinary or hidden properties and inspect/change scriptability where supported.
 - `wait-for-event`: Wait for matching console, instance, attribute, or remote activity. Cursors are resumable only for console and non-selector instance journals.
 
 ## Execution and interaction
 
 - `execute`: Run Luau for an intentional side effect and wait for top-level completion/failure acknowledgement; verify the resulting state separately.
 - `execute-file`: Run a bounded local `.luau` or `.lua` file and wait for top-level acknowledgement.
+- `runtime-write`, `runtime-call`: Modify or invoke already-located runtime objects without reconstructing them in a new Luau chunk.
 - `input`: Send bounded keyboard, text, mouse, scroll, prompt, click-detector, or touch input.
 - `click-button`: Fire signals on a Roblox `GuiButton`.
 - `type-text-box`: Enter text into a Roblox `TextBox`.
@@ -59,7 +68,7 @@ Do not use `execute` plus `print` as a substitute for returned data.
 - Unknown hierarchy: start with `get-descendants-tree` summary mode.
 - Need a custom read or returned values: use `get-data-by-code`, not `execute`.
 - Need an intentional side effect with no returned data: use `execute` or `execute-file`, then verify.
-- Need to find GC functions or tables: use `search-gc`; fall back to custom `filtergc` only for unsupported predicates.
+- Need one GC match: use `search-gc`. Need pagination, diffs, statistics, handles, or references: use `gc-snapshot` followed by `gc-query`.
 - Need a custom selector-expressible instance query: use `QueryDescendants` inside `get-data-by-code`.
 
 See [runtime-patterns.md](runtime-patterns.md) for exact code patterns and fallback conditions.
