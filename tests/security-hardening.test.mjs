@@ -53,11 +53,16 @@ function request({
 }
 
 test("loader snippets preserve an explicitly configured HTTPS bridge", () => {
-  assert.equal(normalizeBridgeUrl("https://bridge.example"), "https://bridge.example:16384");
+  assert.equal(normalizeBridgeUrl("https://bridge.example"), "https://bridge.example");
+  assert.equal(normalizeBridgeUrl("wss://bridge.example/socket"), "wss://bridge.example");
+  assert.equal(normalizeBridgeUrl("bridge.example"), "bridge.example:16384");
   const snippet = buildLoaderSnippet("https://bridge.example");
-  assert.match(snippet, /BridgeURL = "https:\/\/bridge\.example:16384"/);
+  assert.match(snippet, /BridgeURL = "https:\/\/bridge\.example"/);
   assert.match(snippet, /string\.match\(bridgeUrl, "\^https\?:\/\/"\)/);
   assert.doesNotMatch(snippet, /http:\/\/https:\/\//);
+  assert.match(snippet, /HttpService:UrlEncode\(token\)/);
+  assert.match(snippet, /Connector attempt/);
+  assert.match(snippet, /assert\(chunk, compileError/);
 });
 
 test("bridge auth preserves local clients and pairs remote clients", () => {

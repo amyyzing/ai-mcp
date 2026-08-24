@@ -123,12 +123,41 @@ If you prefer to configure a client yourself, use the setup guide for your clien
 The installer prints this for you. Put it in your executor or Auto Execute:
 
 ```lua
-while not getgenv().MCP_Loaded do
-    local bridgeUrl = getgenv().BridgeURL or "localhost:16384"
-    local bridgeBase = string.match(bridgeUrl, "^https?://") and bridgeUrl or ("http://" .. bridgeUrl)
-    pcall(function() loadstring(game:HttpGet(bridgeBase .. "/script.luau"))() end)
+local HttpService = game:GetService("HttpService")
+local attempts = 0
 
-    task.wait(0.15)
+while not getgenv().MCP_Loaded do
+    local bridgeUrl = tostring(getgenv().BridgeURL or "localhost:16384"):gsub("/+$", "")
+    local bridgeBase
+    if string.match(bridgeUrl, "^https?://") then
+        bridgeBase = bridgeUrl
+    elseif string.match(bridgeUrl, "^wss://") then
+        bridgeBase = "https://" .. string.sub(bridgeUrl, 7)
+    elseif string.match(bridgeUrl, "^ws://") then
+        bridgeBase = "http://" .. string.sub(bridgeUrl, 6)
+    else
+        bridgeBase = "http://" .. bridgeUrl
+    end
+
+    local scriptUrl = bridgeBase .. "/script.luau"
+    local token = getgenv().MCPAuthToken or getgenv().BridgeAuthToken
+    if type(token) == "string" and token ~= "" then
+        scriptUrl ..= "?token=" .. HttpService:UrlEncode(token)
+    end
+
+    attempts += 1
+    local success, loadError = pcall(function()
+        local source = game:HttpGet(scriptUrl)
+        local chunk, compileError = loadstring(source)
+        assert(chunk, compileError or "The bridge returned an invalid connector script.")
+        chunk()
+    end)
+
+    if not success and (attempts == 1 or attempts % 20 == 0) then
+        warn("[Roblox MCP] Connector attempt " .. attempts .. " failed for " .. bridgeBase .. ": " .. tostring(loadError))
+    end
+
+    task.wait(attempts < 10 and 0.15 or 1)
 end
 ```
 
@@ -147,17 +176,9 @@ Full-game script indexing is off by default to keep large experiences responsive
 
 Transport selection is automatic. The connector detects common executor WebSocket APIs, attempts a real connection, and falls back to HTTP polling if WebSocket is missing or broken. `DisableWebSocket` is only a troubleshooting override; normal users do not need to set it.
 
-When loading the connector from another machine, authenticate the initial download too:
+`BridgeURL` must point to this Roblox MCP server and its `/script.luau` route. Do not set it to an executor application's agent-facing MCP endpoint: for example, Potassium's local MCP port exposes `list_clients`, `execute_script`, and `read_console`, but it does not host this connector. Potassium can execute the loader, while the loader still connects separately to this server on `16384` or to an authenticated HTTPS deployment.
 
-```lua
-local HttpService = game:GetService("HttpService")
-local bridgeUrl = getgenv().BridgeURL
-local token = getgenv().MCPAuthToken
-local bridgeBase = string.match(bridgeUrl, "^https?://") and bridgeUrl or ("http://" .. bridgeUrl)
-loadstring(game:HttpGet(
-    bridgeBase .. "/script.luau?token=" .. HttpService:UrlEncode(token)
-))()
-```
+When `MCPAuthToken` is set, the loader automatically authenticates the initial connector download as well as its later WebSocket or HTTP requests. A failed download or compile attempt is reported through `warn` instead of being silently swallowed.
 
 After the MCP server starts and Roblox connects, open the dashboard:
 
