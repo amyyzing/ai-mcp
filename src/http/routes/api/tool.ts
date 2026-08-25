@@ -30,6 +30,12 @@ import {
 import { readJsonBody } from "../../body.js";
 import { formatToolText } from "../../../tools/factory.js";
 import { buildListScriptsResult } from "../../../tools/impl/advanced/list-scripts.js";
+import {
+  devirtualizeIndexedLuraphScript,
+  devirtualizeLuraphInputSchema,
+  readCachedLuraphResult,
+  releaseCachedLuraphResult,
+} from "../../../tools/impl/advanced/devirtualize-luraph.js";
 import { compileSafeSearchRegExp } from "../../../tools/safe-regex.js";
 import { remoteSpyInputSchema } from "../../../tools/impl/remote-spy/remote-spy.js";
 import {
@@ -471,6 +477,47 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
           params,
           "Rerun get-script-content with startLine/endLine or a smaller maxLines value."
         ),
+      });
+    }
+
+    // ── Luraph devirtualization (server-side Railway worker) ──────────────────
+    if (type === "devirtualize-luraph") {
+      const parsed = devirtualizeLuraphInputSchema.safeParse({
+        ...params,
+        clientId: target.clientId,
+      });
+      if (!parsed.success) {
+        return jsonErr(
+          res,
+          `Invalid devirtualize-luraph request: ${parsed.error.issues[0]?.message ?? "schema validation failed"}`
+        );
+      }
+      const result = parsed.data.operation === "run"
+        ? await devirtualizeIndexedLuraphScript({
+            clientId: target.clientId,
+            placeId: target.placeId,
+            jobId: target.jobId,
+            scriptPath: parsed.data.scriptPath,
+            captureMode: parsed.data.captureMode,
+            timeoutSeconds: parsed.data.timeoutSeconds,
+            previewLines: parsed.data.previewLines,
+          })
+        : parsed.data.operation === "read"
+          ? readCachedLuraphResult({
+              clientId: target.clientId,
+              resultId: parsed.data.resultId,
+              startLine: parsed.data.startLine,
+              maxLines: parsed.data.maxLines,
+            })
+          : releaseCachedLuraphResult(target.clientId, parsed.data.resultId);
+      if (!result.ok) return jsonErr(res, result.text);
+      return jsonClientOk({
+        result: resultText(
+          result.text,
+          params,
+          "Read the recovered script in narrower follow-up analysis rather than requesting a larger tool result."
+        ),
+        structuredContent: result.structured ?? null,
       });
     }
 

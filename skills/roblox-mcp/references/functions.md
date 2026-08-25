@@ -30,6 +30,7 @@ Do not use `execute` plus `print` as a substitute for returned data.
 - `list-scripts`: Page through indexed script metadata without source by default.
 - `semantic-search-scripts`: Find scripts by behavior when exact identifiers are unknown. OpenAI-compatible providers require explicit confirmation because source-derived text and queries leave the machine and may cost money; indexing also has hard chunk/input budgets.
 - `get-script-content`: Read one script or a focused source range.
+- `devirtualize-luraph`: Run one indexed Luraph-protected script on the configured private Railway worker, page the cached result, or release it. Start with strict capture; sandboxed capture permits the bounded bootstrap decoder when strict output is incomplete.
 - `get-console-output`: Read recent developer-console logs.
 - `get-data-by-code`: Run a small Luau probe and return serialized raw values. The code must `return` its result.
 - `search-gc`: Return the first structured `filtergc` match with bounded summaries and fallback iteration. Executor-native snapshot allocation is outside the tool's control.
@@ -64,6 +65,7 @@ Do not use `execute` plus `print` as a substitute for returned data.
 
 - Known name, string, remote, or API: use `script-grep`.
 - Unknown implementation but known behavior: use `semantic-search-scripts`.
+- Luraph-protected source already in the script index: use `devirtualize-luraph`, not arbitrary executor code.
 - Known instance criteria: use `search-instances`.
 - Unknown hierarchy: start with `get-descendants-tree` summary mode.
 - Need a custom read or returned values: use `get-data-by-code`, not `execute`.

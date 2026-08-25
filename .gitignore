@@ -3,6 +3,8 @@ dist/*
 
 # node modules
 node_modules/*
+__pycache__/
+*.py[cod]
 .roblox-mcp-current.json
 .roblox-mcp-releases/
 .roblox-mcp-update-*

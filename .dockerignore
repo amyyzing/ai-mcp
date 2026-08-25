@@ -1,0 +1,11 @@
+.git
+.github
+.codex
+node_modules
+dist
+research
+benchmarks
+tests
+services/luraph-worker/__pycache__
+*.log
+*.py[cod]

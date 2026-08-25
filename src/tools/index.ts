@@ -29,6 +29,7 @@ import registerWaitForEvent from "./impl/advanced/wait-for-event.js";
 import registerInput from "./impl/advanced/input.js";
 import registerScriptIndex from "./impl/advanced/script-index.js";
 import registerListScripts from "./impl/advanced/list-scripts.js";
+import registerDevirtualizeLuraph from "./impl/advanced/devirtualize-luraph.js";
 import registerRuntimeTools from "./impl/runtime/runtime-tools.js";
 
 export function registerAllTools(server: McpServer, routing: ToolRoutingContext): void {
@@ -57,6 +58,7 @@ export function registerAllTools(server: McpServer, routing: ToolRoutingContext)
   registerInput(server, routing);
   registerScriptIndex(server, routing);
   registerListScripts(server, routing);
+  registerDevirtualizeLuraph(server, routing);
   registerRuntimeTools(server, routing);
 
   registerTypeTextBox(server, routing);

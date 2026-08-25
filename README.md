@@ -33,6 +33,7 @@ Use it to see connected Roblox clients, inspect scripts, run tools, view server 
 - **GC Snapshots and References** — Build reusable GC indexes, query and diff snapshots, compute statistics, and follow table/upvalue/prototype/metatable reference edges.
 - **Bounded Runtime Search & Events** — First-match GC searches plus bounded waits; console and non-selector instance journals support resumable cursors.
 - **Bundled Remote Spy** — Inspect, block, and filter Remotes/Bindables without executing a separate script. The connector capability-probes executor hooks and never downloads spy code.
+- **Railway Luraph Devirtualizer** — Send one indexed protected script to an optional private Railway worker and return recovered source plus quality metrics without installing Python locally.
 - **Unified Input** — Keyboard, text, mouse, scroll, prompt, click-detector, and touch interaction.
 - **Screenshot** — Capture Roblox window screenshots (Windows only).
 - **Multi-Client** — Connect multiple Roblox clients at once.
@@ -201,6 +202,17 @@ The runtime tools capability-probe each executor rather than assuming one API se
 5. `runtime-release` when retained objects are no longer needed
 
 Additional tools expose runtime environments and loaded/running script inventories, Actor threads, callback properties, hidden/non-scriptable properties, and `getconnections` metadata/control. Tagged values preserve Roblox datatypes, cycles, shared table references, non-finite numbers, and non-serializable objects through handles. GC snapshot handles are weak until returned by a query, so creating a snapshot does not itself keep every discovered object alive or corrupt later diffs.
+
+### Railway Luraph devirtualizer
+
+The optional `devirtualize-luraph` tool processes an indexed script on a separate Railway worker, so users do not install Python, Lune, or the devirtualizer on their PC. Deploy a second Railway service from this repository with **Dockerfile Path** set to `/services/luraph-worker/Dockerfile`, name it `luraph-worker`, and leave it private. Configure a `/health` healthcheck and set the same random `LURAPH_WORKER_TOKEN` on both services. On the main MCP service, also set:
+
+```text
+LURAPH_WORKER_URL=http://luraph-worker.railway.internal:8080
+LURAPH_WORKER_TOKEN=<shared random token>
+```
+
+Call `script-index-start` first if the source index is empty, use `list-scripts` to obtain the exact path, then call `devirtualize-luraph` with `operation=run`. Page the cached result with `operation=read` and its returned `nextStartLine`, then use `operation=release`. Results expire after 10 minutes. `captureMode=strict` is the default and may stop at an intermediate tree. `captureMode=sandboxed` permits the devirtualizer's bounded bootstrap decoder but does not invoke the final protected payload. The worker pins its devirtualizer and Lune versions, disables the optional lua.expert upload, handles one job at a time, and deletes ephemeral artifacts after every request. See [the worker deployment guide](services/luraph-worker/README.md).
 
 ## Community
 

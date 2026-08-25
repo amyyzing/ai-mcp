@@ -890,7 +890,7 @@ test("set-active-client selection is isolated per MCP session", async () => {
     assert.equal(secondList.structuredContent?.selectedClientId, secondId);
 
     const listedTools = await firstSession.client.listTools();
-    assert.equal(listedTools.tools.length, 45);
+    assert.equal(listedTools.tools.length, 46);
     for (const name of [
       "runtime-status",
       "script-index-status",

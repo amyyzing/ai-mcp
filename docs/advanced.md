@@ -103,6 +103,12 @@ Under **Settings → Decompiler fallbacks**, choose **Add provider → Custom pr
 
 Luacid is also available as an optional remote fallback. It is disabled by default because enabling it sends bytecode off-device. Keyless HTTP and authenticated WebSocket modes are supported; WebSocket responses are capped at 8 MiB, and only the documented primitive decompiler options are forwarded.
 
+### Railway Luraph worker
+
+Luraph devirtualization is separate from bytecode decompiler fallback selection. The `devirtualize-luraph` MCP tool reads one source from the server-side script index and submits it to the optional worker configured by `LURAPH_WORKER_URL`. `operation=run` retains the recovered source in the MCP core for 10 minutes, `operation=read` pages it, and `operation=release` removes it early. Deploy the worker with `/services/luraph-worker/Dockerfile`; for a service named `luraph-worker`, use `http://luraph-worker.railway.internal:8080` so the traffic remains on Railway's private network. Set a shared `LURAPH_WORKER_TOKEN` on both services.
+
+The worker uses `luauvmp luraph-full --no-lua-expert`, caps source and result sizes, permits one concurrent job, and removes its temporary directory after completion. `strict` capture avoids staged bootstrap execution but can produce only an intermediate result. `sandboxed` capture enables the devirtualizer's bounded bootstrap decoder and should be used only when strict capture cannot reach the protected application tree. Neither mode intentionally invokes the final protected payload.
+
 ## Security
 
 **This server allows arbitrary code execution.** Any connected AI client can run Lua code in your Roblox session, take screenshots, and read client data.
