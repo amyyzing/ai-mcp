@@ -15,7 +15,12 @@ import {
 import {
   RequestBodyTooLargeError,
   readBody,
+  requestBodyLimit,
 } from "../dist/http/body.js";
+import {
+  HTTP_BODY_LIMIT_BYTES,
+  SCRIPT_UPLOAD_BODY_LIMIT_BYTES,
+} from "../dist/config.js";
 import { normalizeClientRegistration } from "../dist/http/client-registration.js";
 import { CLIENT_AUTH_HEADER } from "../dist/http/client-auth.js";
 import { dispatchHttp, loadRoutes } from "../dist/http/router.js";
@@ -164,6 +169,12 @@ test("streamed and declared oversized bodies are rejected", async () => {
   await assert.rejects(readBody(declared, 8), RequestBodyTooLargeError);
 });
 
+test("MCP and tool relay allow the bounded raw-source upload envelope", () => {
+  assert.equal(requestBodyLimit({ url: "/mcp" }), SCRIPT_UPLOAD_BODY_LIMIT_BYTES);
+  assert.equal(requestBodyLimit({ url: "/api/tool" }), SCRIPT_UPLOAD_BODY_LIMIT_BYTES);
+  assert.equal(requestBodyLimit({ url: "/register" }), HTTP_BODY_LIMIT_BYTES);
+});
+
 test("chunked oversized HTTP requests receive 413", async (t) => {
   await loadRoutes();
   const server = http.createServer((req, res) => void dispatchHttp(req, res));
@@ -190,8 +201,8 @@ test("chunked oversized HTTP requests receive 413", async (t) => {
       }
     );
     req.once("error", reject);
-    req.write(Buffer.alloc(1024 * 1024));
-    req.write(Buffer.alloc(1024 * 1024 + 1));
+    req.write(Buffer.alloc(SCRIPT_UPLOAD_BODY_LIMIT_BYTES / 2));
+    req.write(Buffer.alloc(SCRIPT_UPLOAD_BODY_LIMIT_BYTES / 2 + 1));
     req.end();
   });
   assert.equal(status, 413);

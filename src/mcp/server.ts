@@ -15,7 +15,7 @@ const INSTRUCTIONS = [
   "6. Keep tool outputs lean: prefer summaryOnly, filters, and low limits; only raise maxOutputChars when a single result truly needs it. Large/raw outputs degrade reasoning quality.",
   "7. For remote spying, use remote-spy with operation=list first. Start with summaryOnly=true and a low limit; narrow by name before requesting call arguments or changing block/ignore state.",
   "8. Prefer wait-for-event with its returned cursor over repeated polling. All instance targets are strict game/workspace paths, not Luau expressions.",
-  "9. For Luraph-protected indexed source, use devirtualize-luraph operation=run with strict capture first, page with operation=read, and release when finished; use sandboxed capture only if strict mode stops before the application tree.",
+  "9. For Luraph-protected source, use devirtualize-luraph operation=run for an indexed script or operation=run-source for directly supplied raw source. Start with strict capture, page with operation=read, release when finished, and use sandboxed only if strict mode stops before the application tree.",
 ].join("\n");
 
 export function createMcpServer(serverName = SERVER_NAME): McpServer {

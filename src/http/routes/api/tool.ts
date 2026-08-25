@@ -33,6 +33,7 @@ import { buildListScriptsResult } from "../../../tools/impl/advanced/list-script
 import {
   devirtualizeIndexedLuraphScript,
   devirtualizeLuraphInputSchema,
+  devirtualizeRawLuraphSource,
   readCachedLuraphResult,
   releaseCachedLuraphResult,
 } from "../../../tools/impl/advanced/devirtualize-luraph.js";
@@ -201,6 +202,77 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
     const { type, clientId, ...params } = body;
 
     if (!type) return jsonErr(res, "Missing 'type' field.");
+
+    // Raw Luraph source is intentionally usable without a Roblox client. Keep
+    // this server-side branch before the normal target-client requirement so
+    // direct submissions also work through secondary HTTP relays.
+    if (type === "devirtualize-luraph") {
+      const parsed = devirtualizeLuraphInputSchema.safeParse({
+        ...params,
+        ...(clientId ? { clientId } : {}),
+      });
+      if (!parsed.success) {
+        return jsonErr(
+          res,
+          `Invalid devirtualize-luraph request: ${parsed.error.issues[0]?.message ?? "schema validation failed"}`
+        );
+      }
+
+      let target: ReturnType<typeof resolveTargetClient> | undefined;
+      let result;
+      if (parsed.data.operation === "run-source") {
+        result = await devirtualizeRawLuraphSource({
+          source: parsed.data.source,
+          sourceName: parsed.data.sourceName,
+          captureMode: parsed.data.captureMode,
+          timeoutSeconds: parsed.data.timeoutSeconds,
+          previewLines: parsed.data.previewLines,
+        });
+      } else if (parsed.data.operation === "run") {
+        target = resolveTargetClient(parsed.data.clientId);
+        if (!target) return jsonErr(res, describeTargetResolutionFailure(parsed.data.clientId));
+        result = await devirtualizeIndexedLuraphScript({
+          clientId: target.clientId,
+          placeId: target.placeId,
+          jobId: target.jobId,
+          scriptPath: parsed.data.scriptPath,
+          captureMode: parsed.data.captureMode,
+          timeoutSeconds: parsed.data.timeoutSeconds,
+          previewLines: parsed.data.previewLines,
+        });
+      } else {
+        result = parsed.data.operation === "read"
+          ? readCachedLuraphResult({
+              resultId: parsed.data.resultId,
+              startLine: parsed.data.startLine,
+              maxLines: parsed.data.maxLines,
+            })
+          : releaseCachedLuraphResult(undefined, parsed.data.resultId);
+        if (!result.ok) {
+          target = resolveTargetClient(parsed.data.clientId);
+          if (target) {
+            result = parsed.data.operation === "read"
+              ? readCachedLuraphResult({
+                  clientId: target.clientId,
+                  resultId: parsed.data.resultId,
+                  startLine: parsed.data.startLine,
+                  maxLines: parsed.data.maxLines,
+                })
+              : releaseCachedLuraphResult(target.clientId, parsed.data.resultId);
+          }
+        }
+      }
+      if (!result.ok) return jsonErr(res, result.text);
+      return jsonOk(res, {
+        result: resultText(
+          result.text,
+          params,
+          "Read the recovered script in narrower follow-up analysis rather than requesting a larger tool result."
+        ),
+        structuredContent: result.structured ?? null,
+        ...(target ? { clientId: target.clientId } : {}),
+      });
+    }
 
     // Resolve target client
     const target = resolveTargetClient(clientId);
@@ -477,47 +549,6 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
           params,
           "Rerun get-script-content with startLine/endLine or a smaller maxLines value."
         ),
-      });
-    }
-
-    // ── Luraph devirtualization (server-side Railway worker) ──────────────────
-    if (type === "devirtualize-luraph") {
-      const parsed = devirtualizeLuraphInputSchema.safeParse({
-        ...params,
-        clientId: target.clientId,
-      });
-      if (!parsed.success) {
-        return jsonErr(
-          res,
-          `Invalid devirtualize-luraph request: ${parsed.error.issues[0]?.message ?? "schema validation failed"}`
-        );
-      }
-      const result = parsed.data.operation === "run"
-        ? await devirtualizeIndexedLuraphScript({
-            clientId: target.clientId,
-            placeId: target.placeId,
-            jobId: target.jobId,
-            scriptPath: parsed.data.scriptPath,
-            captureMode: parsed.data.captureMode,
-            timeoutSeconds: parsed.data.timeoutSeconds,
-            previewLines: parsed.data.previewLines,
-          })
-        : parsed.data.operation === "read"
-          ? readCachedLuraphResult({
-              clientId: target.clientId,
-              resultId: parsed.data.resultId,
-              startLine: parsed.data.startLine,
-              maxLines: parsed.data.maxLines,
-            })
-          : releaseCachedLuraphResult(target.clientId, parsed.data.resultId);
-      if (!result.ok) return jsonErr(res, result.text);
-      return jsonClientOk({
-        result: resultText(
-          result.text,
-          params,
-          "Read the recovered script in narrower follow-up analysis rather than requesting a larger tool result."
-        ),
-        structuredContent: result.structured ?? null,
       });
     }
 

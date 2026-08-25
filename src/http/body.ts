@@ -18,6 +18,12 @@ export function requestBodyLimit(req: IncomingMessage): number {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
   if (pathname === "/decompile") return DECOMPILE_BODY_LIMIT_BYTES;
   if (pathname === "/script-sources") return SCRIPT_UPLOAD_BODY_LIMIT_BYTES;
+  // MCP and its secondary relay can carry operation=run-source payloads for
+  // the Luraph worker. The tool schema and worker still enforce a 4 MiB source
+  // cap; this larger envelope accounts for JSON escaping and protocol framing.
+  if (pathname === "/mcp" || pathname === "/api/tool") {
+    return SCRIPT_UPLOAD_BODY_LIMIT_BYTES;
+  }
   return HTTP_BODY_LIMIT_BYTES;
 }
 

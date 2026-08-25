@@ -1,6 +1,6 @@
 ---
 name: roblox-mcp
-description: Inspect, search, debug, devirtualize indexed Luraph source, and intentionally modify a connected Roblox client through roblox-executor-mcp or roblox-client-mcp. Use for live instance or script inspection, Luau data probes, garbage-collector searches, remote inspection, client-side execution, Roblox UI interaction, and Roblox window capture.
+description: Inspect, search, debug, devirtualize indexed or directly supplied Luraph source, and intentionally modify a connected Roblox client through roblox-executor-mcp or roblox-client-mcp. Use for live instance or script inspection, Luau data probes, garbage-collector searches, remote inspection, client-side execution, Roblox UI interaction, and Roblox window capture.
 ---
 
 # Roblox MCP
@@ -28,7 +28,7 @@ Apply these defaults unless the task meets an exception in [references/runtime-p
    - Known text or identifier: `script-grep`.
    - Unknown implementation with known behavior: `semantic-search-scripts`. Confirm remote embedding upload only when the configured endpoint is trusted; local Ollama stays local.
    - Source: `get-script-content` with a focused line range.
-   - Luraph-protected indexed source: `devirtualize-luraph` with `operation=run` and `captureMode=strict` first; page with `operation=read`, release when finished, and retry with `sandboxed` only if strict mode stops at an intermediate tree.
+   - Luraph-protected source: use `operation=run` for an indexed script or `operation=run-source` for raw source already in hand. Raw source does not require a Roblox client. Start with `captureMode=strict`, page with `operation=read`, release when finished, and retry with `sandboxed` only if strict mode stops at an intermediate tree.
    - Arbitrary compact values: `get-data-by-code`.
    - One GC function/table: `search-gc`. Deeper runtime investigation: `executor-capabilities`, then `gc-snapshot`, `gc-query`, and `runtime-inspect`/`runtime-references`.
 3. Reduce the root, selector, range, filters, and limit before increasing any output budget.

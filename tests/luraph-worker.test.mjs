@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import http from "node:http";
+import { Readable } from "node:stream";
 import test from "node:test";
 
 import { requestLuraphDevirtualization } from "../dist/luraph/client.js";
+import { POST as postTool } from "../dist/http/routes/api/tool.js";
 import {
+  MAX_DIRECT_LURAPH_SOURCE_BYTES,
+  devirtualizeRawLuraphSource,
   devirtualizeLuraphInputSchema,
   findLuraphScript,
   formatLuraphResultRange,
@@ -22,7 +26,21 @@ function close(server) {
   );
 }
 
-test("Luraph schema requires an indexed path and bounds execution", () => {
+async function callToolRoute(body) {
+  const request = Readable.from([JSON.stringify(body)]);
+  request.url = "/api/tool";
+  request.headers = { "content-type": "application/json" };
+  let statusCode = 200;
+  let responseBody = "";
+  const response = {
+    writeHead(code) { statusCode = code; },
+    end(chunk = "") { responseBody += String(chunk); },
+  };
+  await postTool(request, response);
+  return { statusCode, body: JSON.parse(responseBody) };
+}
+
+test("Luraph schema accepts indexed or direct source and bounds execution", () => {
   assert.equal(devirtualizeLuraphInputSchema.safeParse({
     operation: "run",
     scriptPath: "game.ReplicatedStorage.Protected",
@@ -31,6 +49,23 @@ test("Luraph schema requires an indexed path and bounds execution", () => {
     operation: "run",
     scriptPath: "game.ReplicatedStorage.Protected",
     captureMode: "unsafe",
+  }).success, false);
+  assert.equal(devirtualizeLuraphInputSchema.safeParse({
+    operation: "run-source",
+    source: "return true",
+  }).success, true);
+  assert.equal(devirtualizeLuraphInputSchema.safeParse({
+    operation: "run-source",
+    source: "",
+  }).success, false);
+  assert.equal(devirtualizeLuraphInputSchema.safeParse({
+    operation: "run-source",
+    source: "x".repeat(MAX_DIRECT_LURAPH_SOURCE_BYTES + 1),
+  }).success, false);
+  assert.equal(devirtualizeLuraphInputSchema.safeParse({
+    operation: "run-source",
+    source: "return true",
+    sourceName: "bad\nname",
   }).success, false);
   assert.equal(devirtualizeLuraphInputSchema.safeParse({
     operation: "run",
@@ -51,6 +86,7 @@ test("Luraph recovered results are client-scoped, paged, and releasable", () => 
 
   const resultId = retainLuraphResult({
     clientId: "client-a",
+    sourceKind: "indexed",
     scriptPath: "game.Protected",
     outputFile: "embedded_main.luau",
     source,
@@ -77,6 +113,24 @@ test("Luraph recovered results are client-scoped, paged, and releasable", () => 
     startLine: 1,
     maxLines: 2,
   }).ok, false);
+});
+
+test("direct Luraph results can be paged and released without a Roblox client", () => {
+  const resultId = retainLuraphResult({
+    sourceKind: "raw",
+    scriptPath: "pasted-script.luau",
+    outputFile: "program.decompiled.luau",
+    source: "line 1\nline 2",
+    sourceTruncated: false,
+  });
+  const read = readCachedLuraphResult({
+    resultId,
+    startLine: 1,
+    maxLines: 1,
+  });
+  assert.equal(read.ok, true);
+  assert.equal(read.structured.sourceKind, "raw");
+  assert.equal(releaseCachedLuraphResult(undefined, resultId).ok, true);
 });
 
 test("Luraph script selection accepts exact paths and ScriptProxy IDs", () => {
@@ -132,6 +186,43 @@ test("Luraph worker client uses the configured private HTTP service and token", 
     assert.equal(received.body.captureMode, "strict");
     assert.equal(received.body.timeoutSeconds, 30);
     assert.equal(received.body.maxResultChars, 12000);
+
+    const direct = await devirtualizeRawLuraphSource({
+      source: "direct protected source",
+      sourceName: "pasted-script.luau",
+      captureMode: "strict",
+      timeoutSeconds: 30,
+      previewLines: 20,
+    });
+    assert.equal(direct.ok, true);
+    assert.equal(direct.structured.sourceKind, "raw");
+    assert.equal(direct.structured.scriptPath, "pasted-script.luau");
+    assert.equal(received.body.source, "direct protected source");
+    assert.equal(readCachedLuraphResult({
+      resultId: direct.structured.resultId,
+      startLine: 1,
+      maxLines: 20,
+    }).ok, true);
+    assert.equal(releaseCachedLuraphResult(undefined, direct.structured.resultId).ok, true);
+
+    const relayed = await callToolRoute({
+      type: "devirtualize-luraph",
+      operation: "run-source",
+      source: "HTTP relayed protected source",
+      captureMode: "strict",
+      timeoutSeconds: 30,
+      previewLines: 20,
+    });
+    assert.equal(relayed.statusCode, 200);
+    assert.equal(relayed.body.clientId, undefined);
+    assert.equal(relayed.body.structuredContent.sourceKind, "raw");
+    assert.equal(received.body.source, "HTTP relayed protected source");
+    const released = await callToolRoute({
+      type: "devirtualize-luraph",
+      operation: "release",
+      resultId: relayed.body.structuredContent.resultId,
+    });
+    assert.equal(released.body.error, undefined);
   } finally {
     if (previousUrl === undefined) delete process.env.LURAPH_WORKER_URL;
     else process.env.LURAPH_WORKER_URL = previousUrl;
