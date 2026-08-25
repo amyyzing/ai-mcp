@@ -69,6 +69,7 @@ local ScriptContext: ScriptContext = cloneref(game:GetService("ScriptContext"))
 local HttpService: HttpService = cloneref(game:GetService("HttpService"))
 local LogService: LogService = cloneref(game:GetService("LogService"))
 local Players: Players = cloneref(game:GetService("Players"))
+local TweenService: TweenService = cloneref(game:GetService("TweenService"))
 
 --// Libraries \\--
 
@@ -332,6 +333,10 @@ local GcExplorer = require("./runtime/gc-explorer").new({
     DefaultScanLimit = getgenv().MCP_GcDefaultScanLimit,
     TableScanLimit = getgenv().MCP_GcTableScanLimit,
 })
+local ToastHost = require("./ui/toast-host")({
+    CoreGui = CoreGui,
+    TweenService = TweenService,
+})
 
 --// Bridge client \\--
 local BridgeClient = require("./bridge/client")({
@@ -468,6 +473,7 @@ local runtimeSuccess, runtimeError = pcall(function()
         RuntimeValues = RuntimeValues,
         RuntimeCapabilities = RuntimeCapabilities,
         GcExplorer = GcExplorer,
+        ToastHost = ToastHost,
     })
 end)
 if not runtimeSuccess then

@@ -8,6 +8,7 @@ local ResetScriptMappingState = context.ResetScriptMappingState
 local StartScriptMapping = context.StartScriptMapping
 local StartFailedScriptResync = context.StartFailedScriptResync
 local ResumeDeferredScriptMappings = context.ResumeDeferredScriptMappings
+local ToastHost = context.ToastHost
 --// Main Loop \\--
 while true do
     local success, Bridge = pcall(CreateBridge)
@@ -19,6 +20,9 @@ while true do
 
     local clientId = WaitForBridgeClientId(Bridge)
     if clientId then
+        pcall(function()
+            ToastHost:ShowConnected(Bridge.WebSocket and "ws" or "http")
+        end)
         ScriptMappingPipeline.bridge = Bridge
         StartUploadQueue()
 

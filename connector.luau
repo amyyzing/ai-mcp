@@ -1624,6 +1624,168 @@ end
 return c end function a.f():typeof(__modImpl())local b=a.cache.f if not b then b={c=__modImpl()}a.cache.f=b end return b.c end end do local function __modImpl()
 
 return function(b)
+local c=b.CoreGui
+local d=b.TweenService
+
+local e="RobloxMCPToastHost"
+local f=4
+
+local g={
+Generation=0,
+Gui=nil,
+Toast=nil,
+}
+
+local function ResolveParent()
+local h=getgenv()
+local i=h.gethui
+if type(i)=="function"then
+local j,k=pcall(i)
+if j and typeof(k)=="Instance"then
+return k
+end
+end
+return c
+end
+
+local function ProtectGui(h)
+local i=getgenv()
+local j=i.protect_gui
+if type(j)~="function"and typeof(i.syn)=="table"then
+j=i.syn.protect_gui
+end
+if type(j)=="function"then
+pcall(j,h)
+end
+end
+
+local function NewLabel(h,i,j,k,l,m,n,o)
+local p=Instance.new"TextLabel"
+p.Name=i
+p.BackgroundTransparency=1
+p.Position=k
+p.Size=l
+p.Font=m
+p.Text=j
+p.TextColor3=o
+p.TextSize=n
+p.TextXAlignment=Enum.TextXAlignment.Left
+p.Parent=h
+return p
+end
+
+function g._ensureGui(h)
+if h.Gui and h.Gui.Parent then return h.Gui end
+
+local i=ResolveParent()
+local j=i:FindFirstChild(e)
+if j then
+j:Destroy()
+end
+
+local k=Instance.new"ScreenGui"
+k.Name=e
+k.DisplayOrder=2147483647
+k.IgnoreGuiInset=true
+k.ResetOnSpawn=false
+k.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+ProtectGui(k)
+k.Parent=i
+
+h.Gui=k
+getgenv().MCP_ToastHost=k
+return k
+end
+
+function g.ShowConnected(h,i)
+h.Generation+=1
+local j=h.Generation
+local k=h:_ensureGui()
+
+if h.Toast then
+h.Toast:Destroy()
+end
+
+local l=Instance.new"Frame"
+l.Name="ConnectedToast"
+l.AnchorPoint=Vector2.new(0.5,0)
+l.BackgroundColor3=Color3.fromRGB(23,25,31)
+l.BackgroundTransparency=0.05
+l.BorderSizePixel=0
+l.Position=UDim2.new(0.5,0,0,-76)
+l.Size=UDim2.fromOffset(320,62)
+l.Parent=k
+
+local m=Instance.new"UICorner"
+m.CornerRadius=UDim.new(0,10)
+m.Parent=l
+
+local n=Instance.new"UIStroke"
+n.Color=Color3.fromRGB(75,214,137)
+n.Transparency=0.35
+n.Thickness=1
+n.Parent=l
+
+local o=Instance.new"Frame"
+o.Name="StatusDot"
+o.BackgroundColor3=Color3.fromRGB(75,214,137)
+o.BorderSizePixel=0
+o.Position=UDim2.fromOffset(18,21)
+o.Size=UDim2.fromOffset(10,10)
+o.Parent=l
+
+local p=Instance.new"UICorner"
+p.CornerRadius=UDim.new(1,0)
+p.Parent=o
+
+NewLabel(
+l,
+"Title",
+"MCP connected",
+UDim2.fromOffset(40,9),
+UDim2.new(1,-52,0,24),
+Enum.Font.GothamSemibold,
+15,
+Color3.fromRGB(245,247,250)
+)
+NewLabel(
+l,
+"Detail",
+i=="ws"and"Using WebSocket transport"or"Using HTTP transport",
+UDim2.fromOffset(40,31),
+UDim2.new(1,-52,0,20),
+Enum.Font.Gotham,
+12,
+Color3.fromRGB(174,181,194)
+)
+
+h.Toast=l
+d:Create(
+l,
+TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),
+{Position=UDim2.new(0.5,0,0,18)}
+):Play()
+
+task.delay(f,function()
+if h.Generation~=j or h.Toast~=l or not l.Parent then return end
+local q=d:Create(
+l,
+TweenInfo.new(0.2,Enum.EasingStyle.Quart,Enum.EasingDirection.In),
+{Position=UDim2.new(0.5,0,0,-76),BackgroundTransparency=1}
+)
+q:Play()
+q.Completed:Wait()
+if h.Toast==l then
+h.Toast=nil
+end
+l:Destroy()
+end)
+end
+
+return g
+end end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
+
+return function(b)
 local c=b.HttpService
 local d=b.BridgeHTTPURL
 local e=b.BridgeWebSocketURL
@@ -2048,7 +2210,7 @@ end
 return{
 CreateBridge=CreateBridge,
 }
-end end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
+end end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2149,7 +2311,7 @@ end
 
 b.Stop=b.Destroy
 
-return b end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
+return b end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2344,7 +2506,7 @@ end
 return true
 end
 
-return b end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
+return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2372,7 +2534,7 @@ function b.MarkStarted(d)
 d.started=true
 end
 
-return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
+return b end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -2394,9 +2556,9 @@ c.builtinDisabled=true
 c.useDirectBuiltin=false
 end
 
-return b end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
+return b end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
 
-local b=a.k()
+local b=a.l()
 
 local c={}
 
@@ -2415,7 +2577,7 @@ d.bytecode=g
 return true
 end
 
-return c end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
+return c end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2452,7 +2614,7 @@ d.workers:SetMaxConcurrent(d.currentWorkers)
 end
 end
 
-return b end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
+return b end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2549,7 +2711,7 @@ end
 end
 end
 
-return b end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
+return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2606,7 +2768,7 @@ if f~=false then c:Publish()end
 return true
 end
 
-return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
+return b end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -2818,7 +2980,7 @@ ResetScriptSourceUploadQueue=ResetScriptSourceUploadQueue,
 StartUploadQueue=StartUploadQueue,
 UploadQueueMaxBytes=33554432,
 }
-end end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
+end end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -3474,7 +3636,7 @@ RefreshDecompilerPlan=RefreshDecompilerPlan,
 ResetDecompilerClient=ResetDecompilerClient,
 TakeRetryServerOptions=TakeRetryServerOptions,
 }
-end end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
+end end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -4097,7 +4259,7 @@ ResumeDeferredScriptMappings=ResumeDeferredScriptMappings,
 StartFailedScriptResync=StartFailedScriptResync,
 StartScriptMapping=StartScriptMapping,
 }
-end end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
+end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.LogService
@@ -4218,7 +4380,7 @@ local f=table.pack(loadstring(e.source)())
 
 return f
 end)
-end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
+end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -4306,7 +4468,7 @@ end
 
 return"-- Lines "..r.."-"..t.." of "..o.."\n"..table.concat(u,"\n")..x
 end)
-end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
+end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 local c=false
@@ -4520,7 +4682,7 @@ r.Note="Output capped at "..o.." nodes. Narrow with classFilter, lower maxDepth,
 end
 return r
 end)
-end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
+end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -4810,9 +4972,9 @@ end)
 return o,true
 end
 
-return b end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
+return b end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
 
-local b=a.v()
+local b=a.w()
 
 return function(c,d)
 d:BindToType("ensure-remote-spy",function(e)
@@ -4946,7 +5108,7 @@ count=#m,
 results=m
 }
 end)
-end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
+end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local function GetRemoteIdentity(d)
@@ -5116,7 +5278,7 @@ end
 
 error("Invalid remote-spy operation: "..tostring(e))
 end)
-end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
+end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -5215,7 +5377,7 @@ status="success",
 message="Successfully fired click signals on Button."
 }
 end)
-end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
+end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -5313,7 +5475,7 @@ getgenv().Cobalt.__RobloxMcpInternal==true and"bundled"or"external"
 },
 }
 end)
-end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
+end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -5415,7 +5577,7 @@ end
 
 return g
 end)
-end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
+end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -5534,7 +5696,7 @@ end)
 c:BindToTypeStructured("script-index-resync",function(j)
 return StartFresh"resync_started"
 end)
-end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
+end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=500
@@ -5812,13 +5974,13 @@ e=false
 if not h then error(i)end
 return i
 end)
-end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
+end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 c:BindToTypeStructured("executor-capabilities",function(d)
 return b.RuntimeCapabilities:Probe()
 end)
-end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -6097,7 +6259,7 @@ local h=e:List(g.cursor,g.limit,g.kind)
 h.registry=e:Stats()
 return h
 end)
-end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -6241,7 +6403,7 @@ nextCursor=(s or t<q)and t or nil,
 results=p,
 }
 end)
-end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -6440,7 +6602,7 @@ truncated=#k>#l,
 end
 error("Unknown runtime-actors operation: "..tostring(h))
 end)
-end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.GcExplorer
@@ -6468,7 +6630,7 @@ end)
 c:BindToTypeStructured("runtime-references",function(e)
 return d:References(e)
 end)
-end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
+end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -6584,7 +6746,7 @@ p.operation=h
 p.completed=true
 return p
 end)
-end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
+end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
 
@@ -6835,10 +6997,10 @@ if h.action=="click-detector"then return FireDetector(h)end
 if h.action=="touch"then return FireTouch(h)end
 error("Unsupported input action: "..tostring(h.action))
 end)
-end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
+end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
 
 local b=a.c()
-local c=a.v()
+local c=a.w()
 
 local d="__ROBLOX_MCP_EVENT_JOURNAL_V2"
 local e="__ROBLOX_MCP_EVENT_JOURNAL_V1"
@@ -7302,7 +7464,7 @@ return WaitForRemote(w)
 end
 error("Unsupported wait mode: "..tostring(w.mode))
 end)
-end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
+end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CreateBridge
@@ -7314,47 +7476,50 @@ local h=b.ResetScriptMappingState
 local i=b.StartScriptMapping
 local j=b.StartFailedScriptResync
 local k=b.ResumeDeferredScriptMappings
+local l=b.ToastHost
 
 while true do
-local l,m=pcall(c)
+local m,n=pcall(c)
 
-if not l then
+if not m then
 task.wait(3)
 continue
 end
 
-local n=d(m)
-if n then
-e.bridge=m
+local o=d(n)
+if o then
+pcall(function()
+l:ShowConnected(n.WebSocket and"ws"or"http")
+end)
+e.bridge=n
 f()
 
-local o=e.clientId~=n
-if o then
-h(n)
+local p=e.clientId~=o
+if p then
+h(o)
 end
 
-local p=(
+local q=(
 getgenv().EnableInitialScriptDecompMapping==true or
 getgenv().DisableInitialScriptDecompMapping==false
 )and getgenv().DisableInitialScriptDecompMapping~=true
 
-if p or(not o and e.disabled~=true)then
-i(n)
+if q or(not p and e.disabled~=true)then
+i(o)
 j()
 k()
 g()
 else
-e.clientId=n
+e.clientId=o
 e.disabled=true
 e.stateVersion+=1
 g()
 end
 end
 
-local o={a.s()
-,a.t()
+local p={a.t()
 ,a.u()
-,a.w()
+,a.v()
 ,a.x()
 ,a.y()
 ,a.z()
@@ -7369,20 +7534,21 @@ local o={a.s()
 ,a.I()
 ,a.J()
 ,a.K()
+,a.L()
 ,
 }
-for p,q in o do
-q(b,m)
+for q,r in p do
+r(b,n)
 end
 
-m:WaitForDisconnect()
+n:WaitForDisconnect()
 
-if e.bridge==m then
+if e.bridge==n then
 e.bridge=nil
 end
 task.wait(1)
 end
-end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end end
+end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end end
 
 
 
@@ -7455,174 +7621,175 @@ local k:ScriptContext=f(game:GetService"ScriptContext")
 local l:HttpService=f(game:GetService"HttpService")
 local m:LogService=f(game:GetService"LogService")
 local n:Players=f(game:GetService"Players")
+local o:TweenService=f(game:GetService"TweenService")
 
 
 
-local o
+local p
 do
 
 
 
 
-local p='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local q='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 
-o=base64encode or function(q)
-return((q:gsub('.',function(r)
-local s,t='',r:byte()
-for u=8,1,-1 do s=s..(t%2^u-t%2^(u-1)>0 and'1'or'0')end
-return s
-end)..'0000'):gsub('%d%d%d?%d?%d?%d?',function(r)
-if(#r<6)then return''end
-local s=0
-for t=1,6 do s=s+(r:sub(t,t)=='1'and 2^(6-t)or 0)end
-return p:sub(s+1,s+1)
-end)..({'','==','='})[#q%3+1])
+p=base64encode or function(r)
+return((r:gsub('.',function(s)
+local t,u='',s:byte()
+for v=8,1,-1 do t=t..(u%2^v-u%2^(v-1)>0 and'1'or'0')end
+return t
+end)..'0000'):gsub('%d%d%d?%d?%d?%d?',function(s)
+if(#s<6)then return''end
+local t=0
+for u=1,6 do t=t+(s:sub(u,u)=='1'and 2^(6-u)or 0)end
+return q:sub(t+1,t+1)
+end)..({'','==','='})[#r%3+1])
 end
 end
 
 
 
-local p=type(getscripthash)=="function"and getscripthash or nil
-local q=type(decompile)=="function"and decompile or nil
+local q=type(getscripthash)=="function"and getscripthash or nil
+local r=type(decompile)=="function"and decompile or nil
 
-local r=a.a()
-
-
+local s=a.a()
 
 
-local s=8
-local t=256
-local u=2000
-local v=500
-local w=131072
 
-local function SanitizeString(x,y)
-x=tostring(x)
-local z=math.max(0,math.min(v,y.stringBytes))
-if z==0 then return"<string omitted: output budget reached>"end
 
-local A={}
-local B=0
-local C=pcall(function()
-for C,D in utf8.codes(x)do
-local E=utf8.char(D)
-if B+#E>z then break end
-table.insert(A,E)
-B+=#E
+local t=8
+local u=256
+local v=2000
+local w=500
+local x=131072
+
+local function SanitizeString(y,z)
+y=tostring(y)
+local A=math.max(0,math.min(w,z.stringBytes))
+if A==0 then return"<string omitted: output budget reached>"end
+
+local B={}
+local C=0
+local D=pcall(function()
+for D,E in utf8.codes(y)do
+local F=utf8.char(E)
+if C+#F>A then break end
+table.insert(B,F)
+C+=#F
 end
 end)
-local D
-if C then
-D=table.concat(A)
+local E
+if D then
+E=table.concat(B)
 else
-D=string.sub(string.gsub(x,"[^%g ]","?"),1,z)
-B=#D
+E=string.sub(string.gsub(y,"[^%g ]","?"),1,A)
+C=#E
 end
 
-y.stringBytes=math.max(0,y.stringBytes-B)
-return#D<#x and(D.."...(truncated)")or D
+z.stringBytes=math.max(0,z.stringBytes-C)
+return#E<#y and(E.."...(truncated)")or E
 end
 
-local function SanitizeForOutput(x,y,z,A)
-y=y or 0
-A=A or{
-entries=u,
-stringBytes=w,
+local function SanitizeForOutput(y,z,A,B)
+z=z or 0
+B=B or{
+entries=v,
+stringBytes=x,
 }
-local B=typeof(x)
+local C=typeof(y)
 
-if B=="Instance"then
-local C,D=pcall(function()return x:GetFullName()end)
-return SanitizeString(C and D or x,A)
-elseif B=="string"then
-return SanitizeString(x,A)
-elseif B=="number"then
-if x~=x then return"<nan>"end
-if x==math.huge then return"<infinity>"end
-if x==-math.huge then return"<-infinity>"end
-return x
-elseif B=="boolean"or B=="nil"then
-return x
-elseif B~="table"then
+if C=="Instance"then
+local D,E=pcall(function()return y:GetFullName()end)
+return SanitizeString(D and E or y,B)
+elseif C=="string"then
+return SanitizeString(y,B)
+elseif C=="number"then
+if y~=y then return"<nan>"end
+if y==math.huge then return"<infinity>"end
+if y==-math.huge then return"<-infinity>"end
+return y
+elseif C=="boolean"or C=="nil"then
+return y
+elseif C~="table"then
 
-local C,D=pcall(tostring,x)
-return SanitizeString(C and D or"<unprintable value>",A)
+local D,E=pcall(tostring,y)
+return SanitizeString(D and E or"<unprintable value>",B)
 end
 
-if y>=s then
+if z>=t then
 return"<table: max depth reached>"
 end
 
-z=z or{}
-if z[x]then
+A=A or{}
+if A[y]then
 return"<cyclic table>"
 end
-z[x]=true
+A[y]=true
 
-local C={}
-local D=#x
-local E=D>0
-if E then
-local F=0
-for G in pairs(x)do
-F+=1
-if type(G)~="number"or G%1~=0 or G<1 or G>D then
-E=false
+local D={}
+local E=#y
+local F=E>0
+if F then
+local G=0
+for H in pairs(y)do
+G+=1
+if type(H)~="number"or H%1~=0 or H<1 or H>E then
+F=false
 break
 end
-if F>=t+1 then break end
+if G>=u+1 then break end
 end
 end
 
-if E then
-local F=math.min(D,t)
-local G=0
-for H=1,F do
-if A.entries<=0 then break end
-A.entries-=1
-G+=1
-C[H]=SanitizeForOutput(x[H],y+1,z,A)
+if F then
+local G=math.min(E,u)
+local H=0
+for I=1,G do
+if B.entries<=0 then break end
+B.entries-=1
+H+=1
+D[I]=SanitizeForOutput(y[I],z+1,A,B)
 end
-if D>G then
-C[G+1]={
-__omitted=tostring(D-G).." additional array entries omitted",
+if E>H then
+D[H+1]={
+__omitted=tostring(E-H).." additional array entries omitted",
 }
 end
-z[x]=nil
-return C
+A[y]=nil
+return D
 end
 
-local F=0
-local G=false
-for H,I in pairs(x)do
-if F>=t or A.entries<=0 then
-G=true
+local G=0
+local H=false
+for I,J in pairs(y)do
+if G>=u or B.entries<=0 then
+H=true
 break
 end
-F+=1
-A.entries-=1
+G+=1
+B.entries-=1
 
 
-local J=SanitizeString(typeof(H)=="string"and H or tostring(H),A)
-C[J]=SanitizeForOutput(I,y+1,z,A)
+local K=SanitizeString(typeof(I)=="string"and I or tostring(I),B)
+D[K]=SanitizeForOutput(J,z+1,A,B)
 end
-if G then
-C.__omitted="additional entries omitted"
-end
-
-z[x]=nil
-return C
+if H then
+D.__omitted="additional entries omitted"
 end
 
-
-
-local function StripDecompilerBanner(x)
-if typeof(x)~="string"then return x end
-return(string.gsub(x,"^%s*%-%-[^\n]*[Dd]ecompiled[^\n]*\n","",1))
+A[y]=nil
+return D
 end
 
-local x=getnilinstances or function()return{}end
+
+
+local function StripDecompilerBanner(y)
+if typeof(y)~="string"then return y end
+return(string.gsub(y,"^%s*%-%-[^\n]*[Dd]ecompiled[^\n]*\n","",1))
+end
+
+local y=getnilinstances or function()return{}end
 
 
 
@@ -7643,52 +7810,52 @@ end
 return nil
 end
 
-local y=ResolveWebSocketConnect()
-local z=y~=nil and getgenv().DisableWebSocket~=true
+local z=ResolveWebSocketConnect()
+local A=z~=nil and getgenv().DisableWebSocket~=true
 
 
 local function GenerateSessionGuid()
-local A,B=pcall(function()
+local B,C=pcall(function()
 return l:GenerateGUID(false)
 end)
-if A and type(B)=="string"and B~=""then
-return B
+if B and type(C)=="string"and C~=""then
+return C
 end
 return tostring(os.clock()).."-"..tostring(math.random(1,1000000000))
 end
 
 local function GetClientIdentityKey()
-local A=n.LocalPlayer
+local B=n.LocalPlayer
 return table.concat({
 tostring(game.PlaceId or 0),
 tostring(game.JobId or""),
-tostring(A and A.UserId or 0),
+tostring(B and B.UserId or 0),
 },":")
 end
 
 local function GetStableClientSessionId()
-local A=GetClientIdentityKey()
-if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=A then
+local B=GetClientIdentityKey()
+if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=B then
 getgenv().MCP_ClientSessionId=GenerateSessionGuid()
-getgenv().MCP_ClientIdentityKey=A
+getgenv().MCP_ClientIdentityKey=B
 end
 return getgenv().MCP_ClientSessionId
 end
 
 local function GetRegistrationInfo()
-local A=n.LocalPlayer
-local B="Unknown"
+local B=n.LocalPlayer
+local C="Unknown"
 pcall(function()
-local C=h:GetProductInfo(game.PlaceId)
-B=C.Name
+local D=h:GetProductInfo(game.PlaceId)
+C=D.Name
 end)
 return{
 type="register",
-username=A and A.Name or"Unknown",
-userId=A and A.UserId or 0,
+username=B and B.Name or"Unknown",
+userId=B and B.UserId or 0,
 placeId=game.PlaceId,
 jobId=game.JobId,
-placeName=B,
+placeName=C,
 sessionId=GetStableClientSessionId(),
 clientToken=getgenv().MCP_ClientToken,
 }
@@ -7696,168 +7863,173 @@ end
 
 
 
-local A=a.b().new{
+local B=a.b().new{
 RegistryId=GenerateSessionGuid(),
 MaxHandles=getgenv().MCP_RuntimeMaxHandles,
 DefaultTtlSeconds=getgenv().MCP_RuntimeHandleTtlSeconds,
 }
-local B=a.d().new{
-Handles=A,
+local C=a.d().new{
+Handles=B,
 DefaultDepth=getgenv().MCP_RuntimeValueDepth,
 DefaultEntries=getgenv().MCP_RuntimeValueEntries,
 DefaultStringBytes=getgenv().MCP_RuntimeValueStringBytes,
 }
-local C=a.e().new{
+local D=a.e().new{
 ConnectorVersion="2",
-WebSocketAvailable=z,
+WebSocketAvailable=A,
 }
-local D=a.f().new{
-Handles=A,
-TypedValues=B,
+local E=a.f().new{
+Handles=B,
+TypedValues=C,
 MaxSnapshots=getgenv().MCP_GcMaxSnapshots,
 DefaultScanLimit=getgenv().MCP_GcDefaultScanLimit,
 TableScanLimit=getgenv().MCP_GcTableScanLimit,
 }
+local F=a.g(){
+CoreGui=i,
+TweenService=o,
+}
 
 
-local E=a.g(){
+local G=a.h(){
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeWebSocketURL=d,
 BridgeAuthToken=e,
 BridgeRequestHeaders=BridgeRequestHeaders,
-WebSocketAvailable=z,
-WebSocketConnect=y,
+WebSocketAvailable=A,
+WebSocketConnect=z,
 GetRegistrationInfo=GetRegistrationInfo,
 SanitizeForOutput=SanitizeForOutput,
-LuaEncode=r,
+LuaEncode=s,
 }
-local F=E.CreateBridge
+local H=G.CreateBridge
 
 
-local G=a.h()
-local H=a.i()
-local I=a.j()
-local J=a.k()
-local K=a.l()
-local L=H.new()
-local M=math.max(
+local I=a.i()
+local J=a.j()
+local K=a.k()
+local L=a.l()
+local M=a.m()
+local N=J.new()
+local O=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_ScriptMappingWorkers)or 24),64)
 )
-local N=a.m().new(
-L,
-M
+local P=a.n().new(
+N,
+O
 )
-local O=math.max(
+local Q=math.max(
 5,
 math.min(tonumber(getgenv().MCP_FailedScriptResyncInterval)or 30,600)
 )
-local P=a.n().new(L,{
-IntervalSeconds=O,
-MaxDelaySeconds=math.max(O,300),
+local R=a.o().new(N,{
+IntervalSeconds=Q,
+MaxDelaySeconds=math.max(Q,300),
 BatchSize=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_FailedScriptResyncBatchSize)or 8),32)
 ),
 })
-local Q=a.o().new(
-L,
-P
+local S=a.p().new(
+N,
+R
 )
-local R=a.p(){
-ScriptMappingPipeline=L,
+local T=a.q(){
+ScriptMappingPipeline=N,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
-JobStatus=Q,
+JobStatus=S,
 }
-local S=a.q(){
-ScriptMappingPipeline=L,
+local U=a.r(){
+ScriptMappingPipeline=N,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
 StripDecompilerBanner=StripDecompilerBanner,
-base64_encode=o,
-BuiltInDecompile=q,
-GetScriptHash=p,
-DecompilerAttemptState=J,
-PreparedScript=K,
-Concurrency=N,
+base64_encode=p,
+BuiltInDecompile=r,
+GetScriptHash=q,
+DecompilerAttemptState=L,
+PreparedScript=M,
+Concurrency=P,
 }
-local T=a.r(){
-ScriptMappingPipeline=L,
-WorkerPool=G,
-UploadSession=I,
+local V=a.s(){
+ScriptMappingPipeline=N,
+WorkerPool=I,
+UploadSession=K,
 GenerateSessionGuid=GenerateSessionGuid,
 CoreGui=i,
 CorePackages=j,
 ScriptContext=k,
-getnilinstances=x,
-WorkerCount=M,
-Concurrency=N,
-JobStatus=Q,
-FailedResync=P,
-UploadClient=R,
-DecompilerClient=S,
+getnilinstances=y,
+WorkerCount=O,
+Concurrency=P,
+JobStatus=S,
+FailedResync=R,
+UploadClient=T,
+DecompilerClient=U,
 }
-local U=R.StartUploadQueue
+local W=T.StartUploadQueue
 local function PublishScriptMappingStatus()
-Q:Publish()
+S:Publish()
 end
-local V=T.StartScriptMapping
-local W=T.StartFailedScriptResync
-local X=T.ResetScriptMappingState
-local Y=T.ResumeDeferredScriptMappings
-local Z=T.GetScriptByDebugId
-local aa=T.QueueMappedScriptSource
-local ab=T.DecompileScriptSource
+local X=V.StartScriptMapping
+local Y=V.StartFailedScriptResync
+local Z=V.ResetScriptMappingState
+local aa=V.ResumeDeferredScriptMappings
+local ab=V.GetScriptByDebugId
+local ac=V.QueueMappedScriptSource
+local ad=V.DecompileScriptSource
 
-local function WaitForBridgeClientId(ac)
-local ad=os.clock()+5
+local function WaitForBridgeClientId(ae)
+local af=os.clock()+5
 repeat
-if ac.ClientId then
-return ac.ClientId
+if ae.ClientId then
+return ae.ClientId
 end
-if not ac.Connected then
+if not ae.Connected then
 return nil
 end
 task.wait(0.05)
-until os.clock()>ad
+until os.clock()>af
 
 return nil
 end
 
 getgenv().MCP_Loaded=true
 getgenv().MCP_Loading=nil
-local ac,ad=pcall(function()a.L()
+local ae,af=pcall(function()a.M()
 {
-CreateBridge=F,
+CreateBridge=H,
 WaitForBridgeClientId=WaitForBridgeClientId,
-ScriptMappingPipeline=L,
-StartUploadQueue=U,
+ScriptMappingPipeline=N,
+StartUploadQueue=W,
 PublishScriptMappingStatus=PublishScriptMappingStatus,
-ResetScriptMappingState=X,
-StartScriptMapping=V,
-StartFailedScriptResync=W,
-ResumeDeferredScriptMappings=Y,
-GetScriptByDebugId=Z,
-DecompileScriptSource=ab,
-QueueMappedScriptSource=aa,
+ResetScriptMappingState=Z,
+StartScriptMapping=X,
+StartFailedScriptResync=Y,
+ResumeDeferredScriptMappings=aa,
+GetScriptByDebugId=ab,
+DecompileScriptSource=ad,
+QueueMappedScriptSource=ac,
 LogService=m,
 MarketplaceService=h,
 VirtualInputManager=g,
 Players=n,
-LuaEncode=r,
-WebSocketAvailable=z,
-RuntimeHandles=A,
-RuntimeValues=B,
-RuntimeCapabilities=C,
-GcExplorer=D,
+LuaEncode=s,
+WebSocketAvailable=A,
+RuntimeHandles=B,
+RuntimeValues=C,
+RuntimeCapabilities=D,
+GcExplorer=E,
+ToastHost=F,
 }
 end)
-if not ac then
+if not ae then
 getgenv().MCP_Loaded=nil
 getgenv().MCP_Loading=nil
-error(ad)
+error(af)
 end
