@@ -84,3 +84,15 @@ export function buildOneLineLoaderSnippet(bridgeUrl = DEFAULT_BRIDGE_URL, authTo
     : "";
   return `${credential}getgenv().BridgeURL=${bridgeLiteral};local h=game:GetService("HttpService");local t=getgenv().MCPAuthToken or getgenv().BridgeAuthToken;local u=${scriptLiteral}..(type(t)=="string" and t~="" and ("?token="..h:UrlEncode(t)) or "");local s=game:HttpGet(u);local f,e=loadstring(s);assert(f,e or "The bridge returned an invalid connector script.");f()`;
 }
+
+export function buildHostedLoaderSnippet(bridgeUrl = DEFAULT_BRIDGE_URL) {
+  const normalized = normalizeBridgeUrl(bridgeUrl);
+  const httpBase = /^(?:https?):\/\//i.test(normalized)
+    ? normalized
+    : /^wss:\/\//i.test(normalized)
+      ? `https://${normalized.slice(6)}`
+      : /^ws:\/\//i.test(normalized)
+        ? `http://${normalized.slice(5)}`
+        : `http://${normalized}`;
+  return `loadstring(game:HttpGet(${JSON.stringify(`${httpBase}/loader.luau`)}))()`;
+}

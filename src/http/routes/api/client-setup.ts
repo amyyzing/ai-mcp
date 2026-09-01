@@ -6,6 +6,7 @@ import { SERVER_NAME, SERVER_ROOT } from "../../../config.js";
 import {
   DEFAULT_BRIDGE_URL,
   SERVER_PORT,
+  buildHostedLoaderSnippet,
   buildLoaderSnippet,
   buildOneLineLoaderSnippet,
   normalizeBridgeUrl,
@@ -84,6 +85,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 function connector(bridgeUrl: string): {
   bridgeUrl: string;
+  hostedLoaderSnippet: string;
   loaderSnippet: string;
   oneLineLoaderSnippet: string;
 } {
@@ -91,6 +93,7 @@ function connector(bridgeUrl: string): {
   const connectorToken = getConnectorAuthToken();
   return {
     bridgeUrl: normalized,
+    hostedLoaderSnippet: buildHostedLoaderSnippet(normalized),
     loaderSnippet: buildLoaderSnippet(normalized, connectorToken),
     oneLineLoaderSnippet: buildOneLineLoaderSnippet(normalized, connectorToken),
   };

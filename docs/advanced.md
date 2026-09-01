@@ -41,7 +41,7 @@ ROBLOX_MCP_AUTH_TOKEN=<a-long-random-pairing-token>
 ROBLOX_MCP_CONNECTOR_TOKEN=<a-different-long-random-connector-token>
 ```
 
-Use `ROBLOX_MCP_CONNECTOR_TOKEN` as `getgenv().MCPAuthToken` in Roblox. Keep
+Use `ROBLOX_MCP_CONNECTOR_TOKEN` as the long-lived Roblox connector credential. Keep
 `ROBLOX_MCP_AUTH_TOKEN` for MCP adapters and agents only. If the connector token
 is omitted, Roblox falls back to the agent token for backward compatibility. If
 a non-loopback host is enabled without an explicit token, the core generates a
@@ -74,7 +74,11 @@ Set these in Roblox **before** running the connector:
 | `getgenv().MCP_GcDefaultScanLimit` | `20000` | Default number of executor GC objects considered by a snapshot |
 | `getgenv().MCP_GcTableScanLimit` | `250` | Default number of table entries sampled for signatures and predicates |
 
-For a remote bridge, append `?token=` plus `HttpService:UrlEncode(getgenv().MCPAuthToken)` to the initial `/script.luau` download URL. The connector then authenticates its WebSocket and HTTP fallback requests automatically.
+For a hosted bridge, run `loadstring(game:HttpGet("https://your-host/loader.luau"))()`.
+The server injects `ROBLOX_MCP_CONNECTOR_TOKEN` into the downloaded bootstrap, and
+the connector authenticates its script download, WebSocket, and HTTP fallback
+requests automatically. The token remains available to the running executor even
+though it is omitted from the pasted command.
 
 Failed script mappings are retried automatically in bounded batches. A resync prioritizes the provider that the original attempt actually reached, then uses the configured provider order as fallback.
 

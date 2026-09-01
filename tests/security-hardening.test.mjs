@@ -35,6 +35,7 @@ import { resetRegistry } from "../dist/bridge/handlers/shared/registry.js";
 import { GET as getAvatar } from "../dist/http/routes/api/avatar.js";
 import {
   buildLoaderSnippet,
+  buildHostedLoaderSnippet,
   buildOneLineLoaderSnippet,
   normalizeBridgeUrl,
 } from "../dist/shared/connector-snippet.mjs";
@@ -80,6 +81,15 @@ test("one-line loader is copyable on PC and mobile without committing a credenti
   assert.match(snippet, /getgenv\(\)\.MCPAuthToken/);
   assert.match(snippet, /HttpService/);
   assert.doesNotMatch(snippet, /replace-with|example-secret|ROBLOX_MCP_AUTH_TOKEN/);
+});
+
+test("hosted loader keeps the permanent credential out of the pasted command", () => {
+  const snippet = buildHostedLoaderSnippet("https://bridge.example");
+  assert.equal(
+    snippet,
+    'loadstring(game:HttpGet("https://bridge.example/loader.luau"))()'
+  );
+  assert.doesNotMatch(snippet, /MCPAuthToken|token=/);
 });
 
 test("connector setup can inject a connector-scoped token without changing the source template", () => {
@@ -179,6 +189,7 @@ test("bridge auth preserves local clients and pairs remote clients", () => {
     assert.equal(requiresBridgeAuth(pathname), true, pathname);
   }
   assert.equal(requiresBridgeAuth("/api/admin-session"), false);
+  assert.equal(requiresBridgeAuth("/loader.luau"), false);
   assert.equal(requiresBridgeAuth("/dashboard.js"), false);
 });
 

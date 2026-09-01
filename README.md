@@ -173,19 +173,21 @@ getgenv().MCP_FailedScriptResyncInterval = 30            -- retry failed script 
 getgenv().MCP_FailedScriptResyncBatchSize = 8            -- bound each periodic retry batch
 ```
 
-For PC or mobile executors where a single copyable line is easier, use this
-equivalent form after setting `MCPAuthToken` to your Railway bridge token:
+For PC or mobile executors, a hosted Railway deployment can provide a stable
+single-line loader without putting the connector token in the pasted command:
 
 ```lua
-getgenv().MCPAuthToken="replace-with-your-pairing-token";getgenv().BridgeURL="https://your-service.up.railway.app";local h=game:GetService("HttpService");local t=getgenv().MCPAuthToken;local u=getgenv().BridgeURL.."/script.luau?token="..h:UrlEncode(t);local s=game:HttpGet(u);local f,e=loadstring(s);assert(f,e);f()
+loadstring(game:HttpGet("https://your-service.up.railway.app/loader.luau"))()
 ```
 
 Keep the agent credential in Railway's `ROBLOX_MCP_AUTH_TOKEN` environment
-variable and set a separate `ROBLOX_MCP_CONNECTOR_TOKEN` for Roblox loaders.
+variable and set a separate `ROBLOX_MCP_CONNECTOR_TOKEN` for Roblox loaders. The
+hosted `/loader.luau` route injects that connector token from the server environment,
+so it does not appear in the pasted one-line command.
 Neither belongs in Git. The privileged setup API generates a complete one-line
-loader with only the connector-scoped token. A token placed in any executor
-loadstring is visible to that executor and anyone who receives the line; the
-repository cannot hide it.
+hosted loader, while autoexec installation can still write a direct bootstrap.
+The hosted response supplies the connector-scoped token to the executor; the
+repository cannot hide a credential from the executor that ultimately uses it.
 
 The connector resolves the common `request`, `http_request`, `httprequest`,
 `http.request`, `syn.request`, `fluxus.request`, and `krnl.request` APIs. It

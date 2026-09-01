@@ -91,6 +91,13 @@ test("a versioned core resolves installation artifacts from the stable server ro
     "-- connector from stable installation root"
   );
 
+  const hostedLoader = await fetch(`${baseUrl}/loader.luau`);
+  assert.equal(hostedLoader.status, 200);
+  const hostedLoaderSource = await hostedLoader.text();
+  assert.match(hostedLoaderSource, /getgenv\(\)\.MCPAuthToken = /);
+  assert.match(hostedLoaderSource, new RegExp(`BridgeURL = "http:\\/\\/127\\.0\\.0\\.1:${port}"`));
+  assert.match(hostedLoaderSource, /\/script\.luau/);
+
   const session = await fetch(`${baseUrl}/api/admin-session`);
   assert.equal(session.status, 200);
   const { token } = await session.json();
