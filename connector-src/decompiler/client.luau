@@ -3,6 +3,7 @@ local ScriptMappingPipeline = dependencies.ScriptMappingPipeline
 local HttpService = dependencies.HttpService
 local BridgeHTTPURL = dependencies.BridgeHTTPURL
 local BridgeRequestHeaders = dependencies.BridgeRequestHeaders
+local Request = dependencies.Request
 local StripDecompilerBanner = dependencies.StripDecompilerBanner
 local base64_encode = dependencies.base64_encode
 local BuiltInDecompile = dependencies.BuiltInDecompile
@@ -165,7 +166,7 @@ end
 local function FetchCachedScriptSourceBatch(clientId, hashesToFetch)
     if #hashesToFetch == 0 then return true end
 
-    local ok, response = pcall(request, {
+    local ok, response = pcall(Request, {
         Url = BridgeHTTPURL .. "/script-source-cache",
         Method = "POST",
         Headers = BridgeRequestHeaders({
@@ -199,7 +200,7 @@ local function FetchCachedScriptSourceBatch(clientId, hashesToFetch)
 end
 
 local function FetchCachedScriptSources(clientId, scriptHashes)
-    if type(request) ~= "function" then return end
+    if type(Request) ~= "function" then return end
     if type(clientId) ~= "string" or clientId == "" then return end
     if type(scriptHashes) ~= "table" then return end
 
@@ -286,13 +287,13 @@ local function RefreshDecompilerPlan(force, generation, clientId)
         repeat task.wait() until not DecompilerPlan.refreshToken or os.clock() >= deadline
         return DecompilerPlan.providerId
     end
-    if type(request) ~= "function" then return nil end
+    if type(Request) ~= "function" then return nil end
 
     local refreshToken = {}
     DecompilerPlan.refreshToken = refreshToken
 
     local success, response = RunWithTimeout(5, function()
-        return request({
+        return Request({
             Url = BridgeHTTPURL .. "/decompile-plan?clientId=" .. HttpService:UrlEncode(clientId),
             Method = "GET",
             Headers = BridgeRequestHeaders({
@@ -343,7 +344,7 @@ local function PostBuiltInObservation(body, generation, clientId)
     body.beginObservationSession = true
     task.defer(function()
         if not IsActiveMappingContext(generation, clientId) then return end
-        pcall(request, {
+        pcall(Request, {
             Url = BridgeHTTPURL .. "/decompiler-observations",
             Method = "POST",
             Headers = BridgeRequestHeaders({
@@ -394,7 +395,7 @@ local function ReportBuiltInDecompileFailure(errorMessage, latencyMs, timedOut, 
 end
 
 local function RequestServerDecompile(bytecode, options, generation, clientId)
-    if type(request) ~= "function" then
+    if type(Request) ~= "function" then
         return nil, "request function is unavailable"
     end
 
@@ -418,7 +419,7 @@ local function RequestServerDecompile(bytecode, options, generation, clientId)
     end
 
     local success, response = RunWithTimeout(ServerDecompileTimeoutSeconds, function()
-        return request({
+        return Request({
             Url = BridgeHTTPURL .. "/decompile",
             Method = "POST",
             Headers = BridgeRequestHeaders({

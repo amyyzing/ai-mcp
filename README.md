@@ -173,6 +173,26 @@ getgenv().MCP_FailedScriptResyncInterval = 30            -- retry failed script 
 getgenv().MCP_FailedScriptResyncBatchSize = 8            -- bound each periodic retry batch
 ```
 
+For PC or mobile executors where a single copyable line is easier, use this
+equivalent form after setting `MCPAuthToken` to your Railway bridge token:
+
+```lua
+getgenv().MCPAuthToken="replace-with-your-pairing-token";getgenv().BridgeURL="https://your-service.up.railway.app";local h=game:GetService("HttpService");local t=getgenv().MCPAuthToken;local u=getgenv().BridgeURL.."/script.luau?token="..h:UrlEncode(t);local s=game:HttpGet(u);local f,e=loadstring(s);assert(f,e);f()
+```
+
+Keep the agent credential in Railway's `ROBLOX_MCP_AUTH_TOKEN` environment
+variable and set a separate `ROBLOX_MCP_CONNECTOR_TOKEN` for Roblox loaders.
+Neither belongs in Git. The privileged setup API generates a complete one-line
+loader with only the connector-scoped token. A token placed in any executor
+loadstring is visible to that executor and anyone who receives the line; the
+repository cannot hide it.
+
+The connector resolves the common `request`, `http_request`, `httprequest`,
+`http.request`, `syn.request`, `fluxus.request`, and `krnl.request` APIs. It
+prefers a working WebSocket and falls back to normalized HTTP polling, so the
+same loader can be used on desktop and mobile executors that expose at least one
+of those transports.
+
 Full-game script indexing is off by default to keep large experiences responsive. Use the `script-index-start` MCP tool when needed, or set `EnableInitialScriptDecompMapping = true` before loading the connector.
 
 Transport selection is automatic. The connector detects common executor WebSocket APIs, attempts a real connection, and falls back to HTTP polling if WebSocket is missing or broken. `DisableWebSocket` is only a troubleshooting override; normal users do not need to set it.

@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   BRIDGE_AUTH_HEADER,
   getBridgeAuthToken,
+  getConnectorAuthToken,
   isAllowedRequestOrigin,
   isAuthorizedBridgeRequest,
   requiresBridgeAuth,
@@ -34,6 +35,7 @@ import { resetRegistry } from "../dist/bridge/handlers/shared/registry.js";
 import { GET as getAvatar } from "../dist/http/routes/api/avatar.js";
 import {
   buildLoaderSnippet,
+  buildOneLineLoaderSnippet,
   normalizeBridgeUrl,
 } from "../dist/shared/connector-snippet.mjs";
 
@@ -68,6 +70,74 @@ test("loader snippets preserve an explicitly configured HTTPS bridge", () => {
   assert.match(snippet, /HttpService:UrlEncode\(token\)/);
   assert.match(snippet, /Connector attempt/);
   assert.match(snippet, /assert\(chunk, compileError/);
+});
+
+test("one-line loader is copyable on PC and mobile without committing a credential", () => {
+  const snippet = buildOneLineLoaderSnippet("https://bridge.example");
+  assert.equal(snippet.includes("\n"), false);
+  assert.match(snippet, /getgenv\(\)\.BridgeURL="https:\/\/bridge\.example"/);
+  assert.match(snippet, /game:HttpGet\(u\)/);
+  assert.match(snippet, /getgenv\(\)\.MCPAuthToken/);
+  assert.match(snippet, /HttpService/);
+  assert.doesNotMatch(snippet, /replace-with|example-secret|ROBLOX_MCP_AUTH_TOKEN/);
+});
+
+test("connector setup can inject a connector-scoped token without changing the source template", () => {
+  const snippet = buildOneLineLoaderSnippet("https://bridge.example", "connector-only");
+  assert.match(snippet, /^getgenv\(\)\.MCPAuthToken="connector-only";/);
+  assert.equal(getConnectorAuthToken(), getBridgeAuthToken());
+});
+
+test("configured connector and agent credentials cannot substitute for each other", async () => {
+  const previousAgent = process.env.ROBLOX_MCP_AUTH_TOKEN;
+  const previousConnector = process.env.ROBLOX_MCP_CONNECTOR_TOKEN;
+  process.env.ROBLOX_MCP_AUTH_TOKEN = "agent-only-test-token";
+  process.env.ROBLOX_MCP_CONNECTOR_TOKEN = "connector-only-test-token";
+  try {
+    const isolated = await import(
+      `../dist/http/bridge-auth.js?credential-split=${Date.now()}`
+    );
+    const connectorRequest = request({
+      address: "192.168.1.50",
+      token: "connector-only-test-token",
+      url: "/register",
+    });
+    const agentRequest = request({
+      address: "192.168.1.50",
+      token: "agent-only-test-token",
+      url: "/mcp",
+    });
+    assert.equal(
+      isolated.isAuthorizedBridgeRequest(
+        connectorRequest,
+        new URL("http://host/register")
+      ),
+      true
+    );
+    assert.equal(
+      isolated.isAuthorizedBridgeRequest(
+        agentRequest,
+        new URL("http://host/register")
+      ),
+      false
+    );
+    assert.equal(
+      isolated.isAuthorizedBridgeRequest(agentRequest, new URL("http://host/mcp")),
+      true
+    );
+    assert.equal(
+      isolated.isAuthorizedBridgeRequest(
+        connectorRequest,
+        new URL("http://host/mcp")
+      ),
+      false
+    );
+  } finally {
+    if (previousAgent === undefined) delete process.env.ROBLOX_MCP_AUTH_TOKEN;
+    else process.env.ROBLOX_MCP_AUTH_TOKEN = previousAgent;
+    if (previousConnector === undefined) delete process.env.ROBLOX_MCP_CONNECTOR_TOKEN;
+    else process.env.ROBLOX_MCP_CONNECTOR_TOKEN = previousConnector;
+  }
 });
 
 test("bridge auth preserves local clients and pairs remote clients", () => {

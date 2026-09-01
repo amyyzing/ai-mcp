@@ -35,3 +35,30 @@ test("connector automatically probes WebSocket variants and cools down failures"
   assert.match(client, /websocketRetryDelay = 30/);
   assert.match(client, /return HTTPBridge\.new\(\)/);
 });
+
+test("connector normalizes common desktop and mobile HTTP executor APIs", async () => {
+  const [init, executorHttp, client, capabilities] = await Promise.all([
+    readFile(new URL("../connector-src/init.luau", import.meta.url), "utf8"),
+    readFile(new URL("../connector-src/runtime/executor-http.luau", import.meta.url), "utf8"),
+    readFile(new URL("../connector-src/bridge/client.luau", import.meta.url), "utf8"),
+    readFile(new URL("../connector-src/runtime/capabilities.luau", import.meta.url), "utf8"),
+  ]);
+
+  for (const provider of [
+    "environment.request",
+    "environment.http_request",
+    "environment.httprequest",
+    'name = "http.request"',
+    'name = "syn.request"',
+    'name = "fluxus.request"',
+    'name = "krnl.request"',
+  ]) {
+    assert.match(executorHttp, new RegExp(provider.replaceAll(".", "\\.")));
+  }
+  assert.match(executorHttp, /response\.StatusCode or response\.Status/);
+  assert.match(executorHttp, /response\.Body or response\.body/);
+  assert.match(init, /Request = ExecutorRequest/);
+  assert.match(client, /This executor exposes neither a working WebSocket nor a supported HTTP request API/);
+  assert.match(client, /Body = HttpGet\(BridgeHTTPURL\)/);
+  assert.match(capabilities, /self\.HttpRequestProvider/);
+});

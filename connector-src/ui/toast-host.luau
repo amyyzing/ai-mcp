@@ -88,8 +88,13 @@ function ToastHost:ShowConnected(transport)
     toast.BackgroundTransparency = 0.05
     toast.BorderSizePixel = 0
     toast.Position = UDim2.new(0.5, 0, 0, -76)
-    toast.Size = UDim2.fromOffset(320, 62)
+    toast.Size = UDim2.new(1, -24, 0, 62)
     toast.Parent = gui
+
+    local sizeConstraint = Instance.new("UISizeConstraint")
+    sizeConstraint.MaxSize = Vector2.new(320, 62)
+    sizeConstraint.MinSize = Vector2.new(220, 62)
+    sizeConstraint.Parent = toast
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 10)

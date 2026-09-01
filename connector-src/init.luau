@@ -240,6 +240,8 @@ end
 local getnilinstances = getnilinstances or function() return {} end
 
 --// Compatibility Check \\--
+local ExecutorRequest, HttpRequestProvider = require("./runtime/executor-http").Resolve(getgenv())
+
 -- Executors expose WebSocket under several common names. Resolve the actual
 -- connect function once, then let the bridge test whether it can really open.
 local function ResolveWebSocketConnect()
@@ -323,7 +325,9 @@ local RuntimeValues = require("./runtime/typed-values").new({
     DefaultStringBytes = getgenv().MCP_RuntimeValueStringBytes,
 })
 local RuntimeCapabilities = require("./runtime/capabilities").new({
-    ConnectorVersion = "2",
+    ConnectorVersion = "3",
+    RequestAvailable = ExecutorRequest ~= nil,
+    HttpRequestProvider = HttpRequestProvider,
     WebSocketAvailable = WebSocketAvailable,
 })
 local GcExplorer = require("./runtime/gc-explorer").new({
@@ -345,6 +349,8 @@ local BridgeClient = require("./bridge/client")({
     BridgeWebSocketURL = BridgeWebSocketURL,
     BridgeAuthToken = BridgeAuthToken,
     BridgeRequestHeaders = BridgeRequestHeaders,
+    Request = ExecutorRequest,
+    HttpGet = function(url) return game:HttpGet(url) end,
     WebSocketAvailable = WebSocketAvailable,
     WebSocketConnect = WebSocketConnect,
     GetRegistrationInfo = GetRegistrationInfo,
@@ -389,6 +395,7 @@ local UploadClient = require("./mapping/upload-client")({
     HttpService = HttpService,
     BridgeHTTPURL = BridgeHTTPURL,
     BridgeRequestHeaders = BridgeRequestHeaders,
+    Request = ExecutorRequest,
     JobStatus = MappingJobStatus,
 })
 local DecompilerClient = require("./decompiler/client")({
@@ -396,6 +403,7 @@ local DecompilerClient = require("./decompiler/client")({
     HttpService = HttpService,
     BridgeHTTPURL = BridgeHTTPURL,
     BridgeRequestHeaders = BridgeRequestHeaders,
+    Request = ExecutorRequest,
     StripDecompilerBanner = StripDecompilerBanner,
     base64_encode = base64_encode,
     BuiltInDecompile = BuiltInDecompile,
@@ -469,6 +477,8 @@ local runtimeSuccess, runtimeError = pcall(function()
         Players = Players,
         LuaEncode = LuaEncode,
         WebSocketAvailable = WebSocketAvailable,
+        RequestAvailable = ExecutorRequest ~= nil,
+        HttpRequestProvider = HttpRequestProvider,
         RuntimeHandles = RuntimeHandles,
         RuntimeValues = RuntimeValues,
         RuntimeCapabilities = RuntimeCapabilities,

@@ -60,6 +60,71 @@ return Encode(b,{},0)
 end end function a.a():typeof(__modImpl())local b=a.cache.a if not b then b={c=__modImpl()}a.cache.a=b end return b.c end end do local function __modImpl()
 
 local b={}
+
+local function AddCandidate(c,d,e)
+if type(e)=="function"then
+table.insert(c,{
+provider=d,
+callback=e,
+})
+end
+end
+
+local function NormalizeResponse(c)
+assert(type(c)=="table","Executor HTTP API returned a non-table response.")
+local d=tonumber(
+c.StatusCode or c.Status or c.status_code or c.status
+)
+assert(d~=nil,"Executor HTTP response did not include a status code.")
+return{
+StatusCode=d,
+Body=c.Body or c.body or c.ResponseBody or"",
+Headers=c.Headers or c.headers or{},
+}
+end
+
+function b.Resolve(c)
+c=c or getgenv()
+local d={}
+AddCandidate(d,"request",c.request)
+AddCandidate(d,"http_request",c.http_request)
+AddCandidate(d,"httprequest",c.httprequest)
+
+for e,f in{
+{name="http.request",owner=c.http},
+{name="syn.request",owner=c.syn},
+{name="fluxus.request",owner=c.fluxus},
+{name="krnl.request",owner=c.krnl},
+}do
+if typeof(f.owner)=="table"then
+AddCandidate(d,f.name,f.owner.request)
+end
+end
+
+for e,f in d do
+local g=f.callback
+local function Request(h)
+local i={}
+for j,k in h do
+i[j]=k
+end
+i.url=i.url or i.Url
+i.method=i.method or i.Method
+i.headers=i.headers or i.Headers
+i.body=i.body or i.Body
+local j,k=pcall(g,i)
+assert(j,k)
+return NormalizeResponse(k)
+end
+return Request,f.provider
+end
+
+return nil,"unavailable"
+end
+
+return b end function a.b():typeof(__modImpl())local b=a.cache.b if not b then b={c=__modImpl()}a.cache.b=b end return b.c end end do local function __modImpl()
+
+local b={}
 b.__index=b
 
 local function ClampInteger(c,d,e,f)
@@ -366,7 +431,7 @@ end
 
 b.Classify=Classify
 
-return b end function a.b():typeof(__modImpl())local b=a.cache.b if not b then b={c=__modImpl()}a.cache.b=b end return b.c end end do local function __modImpl()
+return b end function a.c():typeof(__modImpl())local b=a.cache.c if not b then b={c=__modImpl()}a.cache.c=b end return b.c end end do local function __modImpl()
 
 
 
@@ -558,9 +623,9 @@ end
 
 b.Parse=ParsePath
 
-return b end function a.c():typeof(__modImpl())local b=a.cache.c if not b then b={c=__modImpl()}a.cache.c=b end return b.c end end do local function __modImpl()
+return b end function a.d():typeof(__modImpl())local b=a.cache.d if not b then b={c=__modImpl()}a.cache.d=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local c={}
 c.__index=c
@@ -933,7 +998,7 @@ end
 c.FunctionSummary=FunctionSummary
 c.CountTable=CountTable
 
-return c end function a.d():typeof(__modImpl())local b=a.cache.d if not b then b={c=__modImpl()}a.cache.d=b end return b.c end end do local function __modImpl()
+return c end function a.e():typeof(__modImpl())local b=a.cache.e if not b then b={c=__modImpl()}a.cache.e=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -978,6 +1043,8 @@ function b.new(c)
 c=c or{}
 return setmetatable({
 connectorVersion=tostring(c.ConnectorVersion or"1"),
+RequestAvailable=c.RequestAvailable==true,
+HttpRequestProvider=tostring(c.HttpRequestProvider or"unavailable"),
 WebSocketAvailable=c.WebSocketAvailable==true,
 },b)
 end
@@ -985,7 +1052,7 @@ end
 function b.Probe(c)
 local d=type(debug)=="table"and debug or{}
 local e={
-Descriptor("transport.request",IsFunction(request),"executor-api","exact"),
+Descriptor("transport.request",c.RequestAvailable,c.HttpRequestProvider,"exact"),
 Descriptor("transport.websocket",c.WebSocketAvailable,"executor-api","exact"),
 Descriptor("script.loadstring",IsFunction(loadstring),"executor-api","exact"),
 Descriptor("script.decompile",IsFunction(decompile),"executor-api","best-effort"),
@@ -1054,9 +1121,9 @@ capabilities=e,
 }
 end
 
-return b end function a.e():typeof(__modImpl())local b=a.cache.e if not b then b={c=__modImpl()}a.cache.e=b end return b.c end end do local function __modImpl()
+return b end function a.f():typeof(__modImpl())local b=a.cache.f if not b then b={c=__modImpl()}a.cache.f=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local c={}
 c.__index=c
@@ -1621,7 +1688,7 @@ truncated=o,
 }
 end
 
-return c end function a.f():typeof(__modImpl())local b=a.cache.f if not b then b={c=__modImpl()}a.cache.f=b end return b.c end end do local function __modImpl()
+return c end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CoreGui
@@ -1713,30 +1780,35 @@ l.BackgroundColor3=Color3.fromRGB(23,25,31)
 l.BackgroundTransparency=0.05
 l.BorderSizePixel=0
 l.Position=UDim2.new(0.5,0,0,-76)
-l.Size=UDim2.fromOffset(320,62)
+l.Size=UDim2.new(1,-24,0,62)
 l.Parent=k
 
-local m=Instance.new"UICorner"
-m.CornerRadius=UDim.new(0,10)
+local m=Instance.new"UISizeConstraint"
+m.MaxSize=Vector2.new(320,62)
+m.MinSize=Vector2.new(220,62)
 m.Parent=l
 
-local n=Instance.new"UIStroke"
-n.Color=Color3.fromRGB(75,214,137)
-n.Transparency=0.35
-n.Thickness=1
+local n=Instance.new"UICorner"
+n.CornerRadius=UDim.new(0,10)
 n.Parent=l
 
-local o=Instance.new"Frame"
-o.Name="StatusDot"
-o.BackgroundColor3=Color3.fromRGB(75,214,137)
-o.BorderSizePixel=0
-o.Position=UDim2.fromOffset(18,21)
-o.Size=UDim2.fromOffset(10,10)
+local o=Instance.new"UIStroke"
+o.Color=Color3.fromRGB(75,214,137)
+o.Transparency=0.35
+o.Thickness=1
 o.Parent=l
 
-local p=Instance.new"UICorner"
-p.CornerRadius=UDim.new(1,0)
-p.Parent=o
+local p=Instance.new"Frame"
+p.Name="StatusDot"
+p.BackgroundColor3=Color3.fromRGB(75,214,137)
+p.BorderSizePixel=0
+p.Position=UDim2.fromOffset(18,21)
+p.Size=UDim2.fromOffset(10,10)
+p.Parent=l
+
+local q=Instance.new"UICorner"
+q.CornerRadius=UDim.new(1,0)
+q.Parent=p
 
 NewLabel(
 l,
@@ -1768,13 +1840,13 @@ TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),
 
 task.delay(f,function()
 if h.Generation~=j or h.Toast~=l or not l.Parent then return end
-local q=d:Create(
+local r=d:Create(
 l,
 TweenInfo.new(0.2,Enum.EasingStyle.Quart,Enum.EasingDirection.In),
 {Position=UDim2.new(0.5,0,0,-76),BackgroundTransparency=1}
 )
-q:Play()
-q.Completed:Wait()
+r:Play()
+r.Completed:Wait()
 if h.Toast==l then
 h.Toast=nil
 end
@@ -1783,7 +1855,7 @@ end)
 end
 
 return g
-end end function a.g():typeof(__modImpl())local b=a.cache.g if not b then b={c=__modImpl()}a.cache.g=b end return b.c end end do local function __modImpl()
+end end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.HttpService
@@ -1791,397 +1863,407 @@ local d=b.BridgeHTTPURL
 local e=b.BridgeWebSocketURL
 local f=b.BridgeAuthToken
 local g=b.BridgeRequestHeaders
-local h=b.WebSocketAvailable
-local i=b.WebSocketConnect
-local j=b.GetRegistrationInfo
-local k=b.SanitizeForOutput
-local l=b.LuaEncode
-local m=0
-local n=30
+local h=b.Request
+local i=b.HttpGet
+local j=b.WebSocketAvailable
+local k=b.WebSocketConnect
+local l=b.GetRegistrationInfo
+local m=b.SanitizeForOutput
+local n=b.LuaEncode
+local o=0
+local p=30
 
-local function EncodeBridgeResponse(o)
-local p,q=pcall(function()
-return c:JSONEncode(o)
+local function EncodeBridgeResponse(q)
+local r,s=pcall(function()
+return c:JSONEncode(q)
 end)
-if p then return q end
+if r then return s end
 return c:JSONEncode{
-id=type(o)=="table"and o.id or nil,
+id=type(q)=="table"and q.id or nil,
 success=false,
-error="Failed to serialize connector response: "..string.sub(tostring(q),1,300),
+error="Failed to serialize connector response: "..string.sub(tostring(s),1,300),
 }
 end
 
 
-local o={};do
-o.__index=o
+local q={};do
+q.__index=q
 
-function o.BindToType(p,q,r)
-p.Callbacks[q]=r
-end
-
-function o.BindToTypeRaw(p,q,r)
-p.Callbacks[q]=r
-p.RawCallbacks=p.RawCallbacks or{}
-p.RawCallbacks[q]=true
+function q.BindToType(r,s,t)
+r.Callbacks[s]=t
 end
 
-function o.BindToTypeStructured(p,q,r)
-p.Callbacks[q]=r
-p.StructuredCallbacks=p.StructuredCallbacks or{}
-p.StructuredCallbacks[q]=true
+function q.BindToTypeRaw(r,s,t)
+r.Callbacks[s]=t
+r.RawCallbacks=r.RawCallbacks or{}
+r.RawCallbacks[s]=true
 end
 
-function o.CreateAlias(p,q,r)
-for s,t in r do
-p.Callbacks[t]=p.Callbacks[q]
-if p.RawCallbacks and p.RawCallbacks[q]then
-p.RawCallbacks[t]=true
+function q.BindToTypeStructured(r,s,t)
+r.Callbacks[s]=t
+r.StructuredCallbacks=r.StructuredCallbacks or{}
+r.StructuredCallbacks[s]=true
 end
-if p.StructuredCallbacks and p.StructuredCallbacks[q]then
-p.StructuredCallbacks[t]=true
+
+function q.CreateAlias(r,s,t)
+for u,v in t do
+r.Callbacks[v]=r.Callbacks[s]
+if r.RawCallbacks and r.RawCallbacks[s]then
+r.RawCallbacks[v]=true
+end
+if r.StructuredCallbacks and r.StructuredCallbacks[s]then
+r.StructuredCallbacks[v]=true
 end
 end
 end
 
-function o.HandleMessage(p,q)
-if p.Callbacks[q.type]then
-local r,s=pcall(function()
-return p.Callbacks[q.type](q)
+function q.HandleMessage(r,s)
+if r.Callbacks[s.type]then
+local t,u=pcall(function()
+return r.Callbacks[s.type](s)
 end)
 
-if r and s==nil then
+if t and u==nil then
 return nil
 end
 
-if not r then
-return p:FormatResponse(s,q.id,true)
+if not t then
+return r:FormatResponse(u,s.id,true)
 end
 
-if p.RawCallbacks and p.RawCallbacks[q.type]then
+if r.RawCallbacks and r.RawCallbacks[s.type]then
 return{
-output=tostring(s),
+output=tostring(u),
 success=true,
-id=q.id
+id=s.id
 }
 end
 
-return p:FormatResponse(
-s,
-q.id,
+return r:FormatResponse(
+u,
+s.id,
 false,
-p.StructuredCallbacks and p.StructuredCallbacks[q.type]==true
+r.StructuredCallbacks and r.StructuredCallbacks[s.type]==true
 )
 end
 return nil
 end
 
-function o.FormatResponse(p,q,r,s,t)
-if s then
+function q.FormatResponse(r,s,t,u,v)
+if u then
 return{
-error=tostring(q),
+error=tostring(s),
 success=false,
-id=r
+id=t
 }
 end
 
-local u=k(q)
-if typeof(u)~="table"then
-u={u}
+local w=m(s)
+if typeof(w)~="table"then
+w={w}
 end
 
-local v={
-output=l(u,{
+local x={
+output=n(w,{
 Prettify=false
 }),
 success=true,
-id=r
+id=t
 }
-if t then
-v.structured=u
+if v then
+x.structured=w
 end
-return v
+return x
 end
 
-function o.IsAlive(p)
-local q,r=pcall(function()
-local q
-local r=task.spawn(function()
-local r,s=pcall(request,{
+function q.IsAlive(r)
+local s,t=pcall(function()
+local s
+local t=task.spawn(function()
+local t,u
+if h then
+t,u=pcall(h,{
 Url=d,
 Method="GET",
 Headers=g()
 })
+else
+t,u=pcall(function()
+return{StatusCode=200,Body=i(d)}
+end)
+end
 
-if r then
-q=s
+if t then
+s=u
 end
 end)
 
-local s=os.clock()
-repeat task.wait(0.05)until q~=nil or os.clock()-s>5
+local u=os.clock()
+repeat task.wait(0.05)until s~=nil or os.clock()-u>5
 
-if q==nil then
-task.cancel(r)
+if s==nil then
+task.cancel(t)
 return false
 end
 
 
-if q.StatusCode==426 or q.StatusCode==200 then
+if s.StatusCode==426 or s.StatusCode==200 then
 return true
 end
 
 return false
 end)
 
-if not q then
+if not s then
 return false
 end
 
-return r
+return t
 end
 end
 
 
-local p=setmetatable({},{__index=o});do
-p.__index=p
+local r=setmetatable({},{__index=q});do
+r.__index=r
 
-function p.new()
-local q=setmetatable({},p)
+function r.new()
+local s=setmetatable({},r)
 
 
-local r=0.5
-local s=5
-local t=10
-local u=0
+local t=0.5
+local u=5
+local v=10
+local w=0
 
-while not q:IsAlive()do
-u+=1
-if u>=t then
-error("Failed to connect to bridge server after "..t.." attempts")
+while not s:IsAlive()do
+w+=1
+if w>=v then
+error("Failed to connect to bridge server after "..v.." attempts")
 end
-task.wait(r)
-r=math.min(r*1.5,s)
+task.wait(t)
+t=math.min(t*1.5,u)
 end
 
 
-local v
-local w=false
-local x=task.spawn(function()
-local x,y=pcall(function()
-local x=e
+local x
+local y=false
+local z=task.spawn(function()
+local z,A=pcall(function()
+local z=e
 if f~=""then
-x..="?token="..c:UrlEncode(f)
+z..="?token="..c:UrlEncode(f)
 end
-return i(x)
+return k(z)
 end)
-if x then
-v=y
+if z then
+x=A
 end
-w=true
+y=true
 end)
 
-local y=os.clock()
-repeat task.wait(0.05)until v~=nil or w or os.clock()-y>5
+local A=os.clock()
+repeat task.wait(0.05)until x~=nil or y or os.clock()-A>5
 
-if v==nil then
-if not w then
-task.cancel(x)
+if x==nil then
+if not y then
+task.cancel(z)
 end
-error(w and"WebSocket connection failed"or"WebSocket connection timed out after 5 seconds")
+error(y and"WebSocket connection failed"or"WebSocket connection timed out after 5 seconds")
 end
 
-q.WebSocket=v
-q.Connected=true
-q.Callbacks={}
-q.ClientId=nil
+s.WebSocket=x
+s.Connected=true
+s.Callbacks={}
+s.ClientId=nil
 
 
-q.WebSocket:Send(c:JSONEncode(j()))
+s.WebSocket:Send(c:JSONEncode(l()))
 
-q.AliveThread=task.spawn(function()
-local z=0
+s.AliveThread=task.spawn(function()
+local B=0
 while task.wait(1)do
-if not q.Connected then
+if not s.Connected then
 continue
 end
 
-if q:IsAlive()then
-z=0
+if s:IsAlive()then
+B=0
 continue
 end
 
-z+=1
-if z<3 then
+B+=1
+if B<3 then
 continue
 end
 
-q.Connected=false
+s.Connected=false
 break
 end
 
 pcall(function()
-q.WebSocket:Close()
+s.WebSocket:Close()
 end)
 end)
 
 
-q.WebSocket.OnMessage:Connect(function(z)
-local A=c:JSONDecode(z)
+s.WebSocket.OnMessage:Connect(function(B)
+local C=c:JSONDecode(B)
 
 
-if A.type=="registered"then
-q.ClientId=A.clientId
-q.ClientToken=A.clientToken
-getgenv().MCP_ClientToken=A.clientToken
+if C.type=="registered"then
+s.ClientId=C.clientId
+s.ClientToken=C.clientToken
+getgenv().MCP_ClientToken=C.clientToken
 return
 end
 
-local B=q:HandleMessage(A)
-if B then
-q.WebSocket:Send(EncodeBridgeResponse(B))
+local D=s:HandleMessage(C)
+if D then
+s.WebSocket:Send(EncodeBridgeResponse(D))
 end
 end)
 
 
-q.WebSocket.OnClose:Connect(function()
-q.Connected=false
+s.WebSocket.OnClose:Connect(function()
+s.Connected=false
 end)
 
-return q
+return s
 end
 
-function p.WaitForDisconnect(q)
-while q.Connected do
+function r.WaitForDisconnect(s)
+while s.Connected do
 task.wait(0.1)
 end
 end
 end
 
 
-local q=setmetatable({},{__index=o});do
-q.__index=q
+local s=setmetatable({},{__index=q});do
+s.__index=s
 
-function q.new()
-local r=setmetatable({},q)
+function s.new()
+assert(h,"This executor exposes neither a working WebSocket nor a supported HTTP request API.")
+local t=setmetatable({},s)
 
 
-local s=0.5
-local t=5
-local u=10
-local v=0
+local u=0.5
+local v=5
+local w=10
+local x=0
 
-while not r:IsAlive()do
-v+=1
-if v>=u then
-error("Failed to connect to bridge server after "..u.." attempts")
+while not t:IsAlive()do
+x+=1
+if x>=w then
+error("Failed to connect to bridge server after "..w.." attempts")
 end
-task.wait(s)
-s=math.min(s*1.5,t)
+task.wait(u)
+u=math.min(u*1.5,v)
 end
 
-r.Connected=true
-r.Callbacks={}
-r.PollInterval=0.1
-r.ClientId=nil
+t.Connected=true
+t.Callbacks={}
+t.PollInterval=0.1
+t.ClientId=nil
 
 
-local w,x=pcall(function()
-local w=request{
+local y,z=pcall(function()
+local y=h{
 Url=d.."/register",
 Method="POST",
 Headers=g{["Content-Type"]="application/json"},
-Body=c:JSONEncode(j()),
+Body=c:JSONEncode(l()),
 }
-if w.StatusCode==200 and w.Body then
-local x=c:JSONDecode(w.Body)
-r.ClientId=x.clientId
-r.ClientToken=x.clientToken
-getgenv().MCP_ClientToken=x.clientToken
+if y.StatusCode==200 and y.Body then
+local z=c:JSONDecode(y.Body)
+t.ClientId=z.clientId
+t.ClientToken=z.clientToken
+getgenv().MCP_ClientToken=z.clientToken
 end
 end)
-if not w or type(r.ClientId)~="string"or type(r.ClientToken)~="string"then
-r.Connected=false
-error("Bridge HTTP registration failed: "..tostring(x or"server rejected registration"))
+if not y or type(t.ClientId)~="string"or type(t.ClientToken)~="string"then
+t.Connected=false
+error("Bridge HTTP registration failed: "..tostring(z or"server rejected registration"))
 end
 
 
-r.PollThread=task.spawn(function()
-local y=0
+t.PollThread=task.spawn(function()
+local A=0
 
-while r.Connected do
-local z=false local
-A=pcall(function()
-local A=d.."/poll"
-if r.ClientId then
-A=A.."?clientId="..r.ClientId
+while t.Connected do
+local B=false local
+C=pcall(function()
+local C=d.."/poll"
+if t.ClientId then
+C=C.."?clientId="..t.ClientId
 end
-local B=request{
-Url=A,
+local D=h{
+Url=C,
 Method="GET",
 Headers=g()
 }
 
 
-if B.StatusCode~=204 and B.StatusCode~=200 then
-y+=1
-if y>=3 then
-r.Connected=false
+if D.StatusCode~=204 and D.StatusCode~=200 then
+A+=1
+if A>=3 then
+t.Connected=false
 end
 
 return
 end
 
-y=0
+A=0
 
 
-if B.Body and B.Body~=""then
-local C=c:JSONDecode(B.Body)
-local D={}
-if typeof(C)=="table"and C.type==nil and#C>0 then
-D=C
-elseif typeof(C)=="table"and C.type~=nil then
-D={C}
+if D.Body and D.Body~=""then
+local E=c:JSONDecode(D.Body)
+local F={}
+if typeof(E)=="table"and E.type==nil and#E>0 then
+F=E
+elseif typeof(E)=="table"and E.type~=nil then
+F={E}
 end
 
-for E,F in ipairs(D)do
-z=true
+for G,H in ipairs(F)do
+B=true
 task.spawn(function()
-local G=r:HandleMessage(F)
-if G==nil then return end
-G.clientId=r.ClientId
+local I=t:HandleMessage(H)
+if I==nil then return end
+I.clientId=t.ClientId
 
 
-request{
-Url=d.."/respond?clientId="..c:UrlEncode(r.ClientId),
+h{
+Url=d.."/respond?clientId="..c:UrlEncode(t.ClientId),
 Method="POST",
 Headers=g{
 ["Content-Type"]="application/json"
 },
-Body=EncodeBridgeResponse(G)
+Body=EncodeBridgeResponse(I)
 }
 end)
 end
 end
 end)
 
-if not A then
-y+=1
-if y>=3 then
-r.Connected=false
+if not C then
+A+=1
+if A>=3 then
+t.Connected=false
 end
 end
 
-if not z then
-task.wait(r.PollInterval)
+if not B then
+task.wait(t.PollInterval)
 end
 end
 end)
 
-return r
+return t
 end
 
-function q.WaitForDisconnect(r)
-while r.Connected do
+function s.WaitForDisconnect(t)
+while t.Connected do
 task.wait(0.1)
 end
 end
@@ -2189,28 +2271,28 @@ end
 
 
 local function CreateBridge()
-if h and os.clock()>=m then
-local r,s=pcall(function()
-return p.new()
+if j and os.clock()>=o then
+local t,u=pcall(function()
+return r.new()
 end)
 
-if r then
-m=0
-return s
+if t then
+o=0
+return u
 end
 
 
 
-m=os.clock()+n
+o=os.clock()+p
 end
 
-return q.new()
+return s.new()
 end
 
 return{
 CreateBridge=CreateBridge,
 }
-end end function a.h():typeof(__modImpl())local b=a.cache.h if not b then b={c=__modImpl()}a.cache.h=b end return b.c end end do local function __modImpl()
+end end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2311,7 +2393,7 @@ end
 
 b.Stop=b.Destroy
 
-return b end function a.i():typeof(__modImpl())local b=a.cache.i if not b then b={c=__modImpl()}a.cache.i=b end return b.c end end do local function __modImpl()
+return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2506,7 +2588,7 @@ end
 return true
 end
 
-return b end function a.j():typeof(__modImpl())local b=a.cache.j if not b then b={c=__modImpl()}a.cache.j=b end return b.c end end do local function __modImpl()
+return b end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2534,7 +2616,7 @@ function b.MarkStarted(d)
 d.started=true
 end
 
-return b end function a.k():typeof(__modImpl())local b=a.cache.k if not b then b={c=__modImpl()}a.cache.k=b end return b.c end end do local function __modImpl()
+return b end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -2556,9 +2638,9 @@ c.builtinDisabled=true
 c.useDirectBuiltin=false
 end
 
-return b end function a.l():typeof(__modImpl())local b=a.cache.l if not b then b={c=__modImpl()}a.cache.l=b end return b.c end end do local function __modImpl()
+return b end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
 
-local b=a.l()
+local b=a.m()
 
 local c={}
 
@@ -2577,7 +2659,7 @@ d.bytecode=g
 return true
 end
 
-return c end function a.m():typeof(__modImpl())local b=a.cache.m if not b then b={c=__modImpl()}a.cache.m=b end return b.c end end do local function __modImpl()
+return c end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2614,7 +2696,7 @@ d.workers:SetMaxConcurrent(d.currentWorkers)
 end
 end
 
-return b end function a.n():typeof(__modImpl())local b=a.cache.n if not b then b={c=__modImpl()}a.cache.n=b end return b.c end end do local function __modImpl()
+return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2711,7 +2793,7 @@ end
 end
 end
 
-return b end function a.o():typeof(__modImpl())local b=a.cache.o if not b then b={c=__modImpl()}a.cache.o=b end return b.c end end do local function __modImpl()
+return b end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -2768,114 +2850,115 @@ if f~=false then c:Publish()end
 return true
 end
 
-return b end function a.p():typeof(__modImpl())local b=a.cache.p if not b then b={c=__modImpl()}a.cache.p=b end return b.c end end do local function __modImpl()
+return b end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
 local d=b.HttpService
 local e=b.BridgeHTTPURL
 local f=b.BridgeRequestHeaders
-local g=b.JobStatus
-local h=64
-local i=8388608
-local j=0.5
-local k=5
-local l=8
+local g=b.Request
+local h=b.JobStatus
+local i=64
+local j=8388608
+local k=0.5
+local l=5
+local m=8
 
-local function IsScriptMappingTransportReady(m)
+local function IsScriptMappingTransportReady(n)
 return(
 c.bridge~=nil and
 c.bridge.Connected==true and
 c.bridge.ClientId~=nil and
-c.bridge.ClientId==m
+c.bridge.ClientId==n
 )
 end
 
-local function UploadScriptSourceBatch(m,n)
-if not m then return false end
-if not IsScriptMappingTransportReady(m)then return false end
-local o=c.generation
-local p=c.session
-if not p then return false end
+local function UploadScriptSourceBatch(n,o)
+if not n then return false end
+if not IsScriptMappingTransportReady(n)then return false end
+local p=c.generation
+local q=c.session
+if not q then return false end
 
-local q={}
 local r={}
-for s,t in n or{}do
-if t.kind=="remove"then
-table.insert(r,t.debugId)
+local s={}
+for t,u in o or{}do
+if u.kind=="remove"then
+table.insert(s,u.debugId)
 else
-table.insert(q,{
-debugId=t.debugId,
-path=t.path,
-source=t.source,
-scriptHash=t.scriptHash,
+table.insert(r,{
+debugId=u.debugId,
+path=u.path,
+source=u.source,
+scriptHash=u.scriptHash,
 })
 end
 end
 
-local s=#q
-local t=math.min(c.total,c.processed+s)
-local u=c:IsFinished(t)
-local v=p:NextRevision()
+local t=#r
+local u=math.min(c.total,c.processed+t)
+local v=c:IsFinished(u)
+local w=q:NextRevision()
 
-local w,x=pcall(request,{
+local x,y=pcall(g,{
 Url=e.."/script-sources",
 Method="POST",
 Headers=f{
 ["Content-Type"]="application/json"
 },
 Body=d:JSONEncode{
-clientId=m,
-scripts=q,
-removedScriptIds=r,
-hasFinishedMapping=u,
+clientId=n,
+scripts=r,
+removedScriptIds=s,
+hasFinishedMapping=v,
 sourcesToMap=c.total,
-processedSources=t,
+processedSources=u,
 skippedSources=c.skipped,
-mappingSessionId=p.id,
-mappingSessionStartedAt=p.startedAt,
-mappingRevision=v,
-beginMappingSession=not p.started,
+mappingSessionId=q.id,
+mappingSessionStartedAt=q.startedAt,
+mappingRevision=w,
+beginMappingSession=not q.started,
 }
 })
 
-if not w or not x or x.StatusCode~=200 then return false,v end
+if not x or not y or y.StatusCode~=200 then return false,w end
 
 if(
-not c:IsActiveSession(p,o,m)
+not c:IsActiveSession(q,p,n)
 )then
-return false,v,"stale_session"
+return false,w,"stale_session"
 end
 
-local y=v
-if type(x.Body)=="string"and x.Body~=""then
-local z,A=pcall(function()
-return d:JSONDecode(x.Body)
+local z=w
+if type(y.Body)=="string"and y.Body~=""then
+local A,B=pcall(function()
+return d:JSONDecode(y.Body)
 end)
-if z and type(A)=="table"and type(A.acceptedMappingRevision)=="number"then
-y=A.acceptedMappingRevision
+if A and type(B)=="table"and type(B.acceptedMappingRevision)=="number"then
+z=B.acceptedMappingRevision
 end
 end
-if y~=v then return false,v end
+if z~=w then return false,w end
 
-p:MarkStarted()
-return true,v
+q:MarkStarted()
+return true,w
 end
 
-local function EnqueueScriptSourceUpload(m)
-m.queuedBytes=if type(m.source)=="string"then#m.source else 0
+local function EnqueueScriptSourceUpload(n)
+n.queuedBytes=if type(n.source)=="string"then#n.source else 0
 c.upload.tail+=1
-c.upload.queue[c.upload.tail]=m
-c.upload.bytes+=m.queuedBytes
+c.upload.queue[c.upload.tail]=n
+c.upload.bytes+=n.queuedBytes
 end
 
 local function DequeueScriptSourceUpload()
 if c.upload.head>c.upload.tail then return nil end
-local m=c.upload.queue[c.upload.head]
+local n=c.upload.queue[c.upload.head]
 c.upload.queue[c.upload.head]=nil
 c.upload.head+=1
-if m then c.upload.bytes=math.max(0,c.upload.bytes-(m.queuedBytes or 0))end
-return m
+if n then c.upload.bytes=math.max(0,c.upload.bytes-(n.queuedBytes or 0))end
+return n
 end
 
 local function ResetScriptSourceUploadQueue()
@@ -2891,81 +2974,81 @@ if c.upload.thread then return end
 c.upload.thread=task.spawn(function()
 while true do
 if not IsScriptMappingTransportReady(c.clientId)then
-task.wait(j)
+task.wait(k)
 continue
 end
 if c.upload.head>c.upload.tail then
 if c.statusDirty then
-local m=c.stateVersion
-local n=UploadScriptSourceBatch(
+local n=c.stateVersion
+local o=UploadScriptSourceBatch(
 c.clientId,
 {}
 )
-if n and c.stateVersion==m then
+if o and c.stateVersion==n then
 c.statusDirty=false
 end
 end
-task.wait(j)
+task.wait(k)
 continue
 end
 
-local m={}
-local n=0
-while c.upload.head<=c.upload.tail and#m<h do
-local o=c.upload.queue[c.upload.head]
-local p=if o and type(o.source)=="string"then#o.source else 0
-if#m>0 and n+p>i then break end
+local n={}
+local o=0
+while c.upload.head<=c.upload.tail and#n<i do
+local p=c.upload.queue[c.upload.head]
+local q=if p and type(p.source)=="string"then#p.source else 0
+if#n>0 and o+q>j then break end
 
-local q=DequeueScriptSourceUpload()
-if not q then continue end
-local r=c.jobs[q.debugId]
-local s=q.generation==c.generation and r~=nil
-local t=s and(
-(q.kind=="source"and r.state=="awaiting_upload")or
-(q.kind=="remove"and r.state=="removed")
+local r=DequeueScriptSourceUpload()
+if not r then continue end
+local s=c.jobs[r.debugId]
+local t=r.generation==c.generation and s~=nil
+local u=t and(
+(r.kind=="source"and s.state=="awaiting_upload")or
+(r.kind=="remove"and s.state=="removed")
 )
-if t then
-table.insert(m,q)
-n+=p
+if u then
+table.insert(n,r)
+o+=q
 end
 end
-if#m==0 then continue end
+if#n==0 then continue end
 
-local o=c.stateVersion
-local p=UploadScriptSourceBatch(c.clientId,m)
-if p then
-local q=0
-for r,s in m do
-if s.kind=="source"and s.generation==c.generation then
-if g:MarkMapped(s.debugId,false)then
-q+=1
+local p=c.stateVersion
+local q=UploadScriptSourceBatch(c.clientId,n)
+if q then
+local r=0
+for s,t in n do
+if t.kind=="source"and t.generation==c.generation then
+if h:MarkMapped(t.debugId,false)then
+r+=1
 end
 end
 end
 c.statusDirty=
-c.stateVersion~=o+q
+c.stateVersion~=p+r
 else
-local q=false
-for r=#m,1,-1 do
-local s=m[r]
-if s.generation~=c.generation then
+local r=false
+for s=#n,1,-1 do
+local t=n[s]
+if t.generation~=c.generation then
 continue
 end
 
-s.attempts=(s.attempts or 0)+1
-if s.kind=="source"and s.attempts>=k then
-q=g:MarkFailed(
-s.debugId,
-"Source upload failed after "..tostring(s.attempts).." attempts.",
+t.attempts=(t.attempts or 0)+1
+if t.kind=="source"and t.attempts>=l then
+r=h:MarkFailed(
+t.debugId,
+"Source upload failed after "..tostring(t.attempts).." attempts.",
 false
-)or q
+)or r
 else
-EnqueueScriptSourceUpload(s)
+EnqueueScriptSourceUpload(t)
 end
 end
-if q then g:Publish()end
-local r=m[1]and m[1].attempts or 1
-task.wait(math.min(2^math.max(0,r-1),l))
+if r then h:Publish()end
+local s=n[1]and n[1].attempts or 1
+task.wait(math.min(2^math.max(0,s-1),m))
 end
 
 task.wait()
@@ -2980,35 +3063,36 @@ ResetScriptSourceUploadQueue=ResetScriptSourceUploadQueue,
 StartUploadQueue=StartUploadQueue,
 UploadQueueMaxBytes=33554432,
 }
-end end function a.q():typeof(__modImpl())local b=a.cache.q if not b then b={c=__modImpl()}a.cache.q=b end return b.c end end do local function __modImpl()
+end end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
 local d=b.HttpService
 local e=b.BridgeHTTPURL
 local f=b.BridgeRequestHeaders
-local g=b.StripDecompilerBanner
-local h=b.base64_encode
-local i=b.BuiltInDecompile
-local j=b.GetScriptHash
-local k=b.DecompilerAttemptState
-local l=b.PreparedScript
-local m=b.Concurrency
-local n=256
-local o=1024
-local p=33554432
-local q=2097152
-local r=2
-local s=3
-local t=8
-local u=65
-local v={
+local g=b.Request
+local h=b.StripDecompilerBanner
+local i=b.base64_encode
+local j=b.BuiltInDecompile
+local k=b.GetScriptHash
+local l=b.DecompilerAttemptState
+local m=b.PreparedScript
+local n=b.Concurrency
+local o=256
+local p=1024
+local q=33554432
+local r=2097152
+local s=2
+local t=3
+local u=8
+local v=65
+local w={
 providerId=nil,
 expiresAt=0,
 refreshToken=nil,
 blockedBuiltinUntil=0,
 }
-local w={
+local x={
 startedAt=nil,
 lastAt=nil,
 samples=0,
@@ -3016,91 +3100,91 @@ lastReportAt=0,
 revision=0,
 }
 
-local function RunWithTimeout(x,y)
-local z=false
+local function RunWithTimeout(y,z)
 local A=false
-local B
+local B=false
+local C
 
-local C=task.spawn(function()
-A,B=pcall(y)
-z=true
+local D=task.spawn(function()
+B,C=pcall(z)
+A=true
 end)
 
-local D=os.clock()+x
-while not z and os.clock()<D do
+local E=os.clock()+y
+while not A and os.clock()<E do
 task.wait(0.05)
 end
 
-if not z then
-pcall(task.cancel,C)
-return false,"Timed out after "..tostring(x).."s."
-end
-
 if not A then
-return false,B
+pcall(task.cancel,D)
+return false,"Timed out after "..tostring(y).."s."
 end
 
-return true,B
+if not B then
+return false,C
 end
 
-local function RememberScriptSourceForHash(x,y)
-if type(x)~="string"or x==""or#x>512 then return false end
-if type(y)~="string"or y==""then return false end
+return true,C
+end
 
-local z=c.sourceCacheByHash[x]
-if z then
+local function RememberScriptSourceForHash(y,z)
+if type(y)~="string"or y==""or#y>512 then return false end
+if type(z)~="string"or z==""then return false end
+
+local A=c.sourceCacheByHash[y]
+if A then
 c.sourceCacheBytes=math.max(
 0,
-c.sourceCacheBytes-#z
+c.sourceCacheBytes-#A
 )
 else
 c.sourceCacheEntries+=1
 end
 
-if#y>q then
-c.sourceCacheByHash[x]=nil
-c.sourceCacheSequenceByHash[x]=nil
+if#z>r then
+c.sourceCacheByHash[y]=nil
+c.sourceCacheSequenceByHash[y]=nil
 c.sourceCacheEntries=math.max(
 0,
 c.sourceCacheEntries-1
 )
-c.sourceCacheCheckedByHash[x]=true
+c.sourceCacheCheckedByHash[y]=true
 return false
 end
 
 c.sourceCacheSequence+=1
-local A=c.sourceCacheSequence
-c.sourceCacheByHash[x]=y
-c.sourceCacheSequenceByHash[x]=A
-c.sourceCacheBytes+=#y
+local B=c.sourceCacheSequence
+c.sourceCacheByHash[y]=z
+c.sourceCacheSequenceByHash[y]=B
+c.sourceCacheBytes+=#z
 c.sourceCacheOrderTail+=1
 c.sourceCacheOrder[c.sourceCacheOrderTail]={
-hash=x,
-sequence=A,
+hash=y,
+sequence=B,
 }
-c.sourceCacheCheckedByHash[x]=true
+c.sourceCacheCheckedByHash[y]=true
 
 while(
-c.sourceCacheEntries>o or
-c.sourceCacheBytes>p
+c.sourceCacheEntries>p or
+c.sourceCacheBytes>q
 )do
-local B=c.sourceCacheOrderHead
-local C=c.sourceCacheOrder[B]
-if not C then break end
-c.sourceCacheOrder[B]=nil
-c.sourceCacheOrderHead=B+1
+local C=c.sourceCacheOrderHead
+local D=c.sourceCacheOrder[C]
+if not D then break end
+c.sourceCacheOrder[C]=nil
+c.sourceCacheOrderHead=C+1
 
-if c.sourceCacheSequenceByHash[C.hash]==C.sequence then
-local D=c.sourceCacheByHash[C.hash]
-c.sourceCacheByHash[C.hash]=nil
-c.sourceCacheSequenceByHash[C.hash]=nil
+if c.sourceCacheSequenceByHash[D.hash]==D.sequence then
+local E=c.sourceCacheByHash[D.hash]
+c.sourceCacheByHash[D.hash]=nil
+c.sourceCacheSequenceByHash[D.hash]=nil
 c.sourceCacheEntries=math.max(
 0,
 c.sourceCacheEntries-1
 )
 c.sourceCacheBytes=math.max(
 0,
-c.sourceCacheBytes-(type(D)=="string"and#D or 0)
+c.sourceCacheBytes-(type(E)=="string"and#E or 0)
 )
 end
 end
@@ -3108,48 +3192,48 @@ end
 if(
 c.sourceCacheOrderTail-
 c.sourceCacheOrderHead+1
-)>o*4 then
-local B={}
-for C,D in c.sourceCacheSequenceByHash do
-table.insert(B,{hash=C,sequence=D})
+)>p*4 then
+local C={}
+for D,E in c.sourceCacheSequenceByHash do
+table.insert(C,{hash=D,sequence=E})
 end
-table.sort(B,function(C,D)return C.sequence<D.sequence end)
-c.sourceCacheOrder=B
+table.sort(C,function(D,E)return D.sequence<E.sequence end)
+c.sourceCacheOrder=C
 c.sourceCacheOrderHead=1
-c.sourceCacheOrderTail=#B
+c.sourceCacheOrderTail=#C
 end
 return true
 end
 
-local function ReadScriptHash(x)
-if type(j)~="function"then return nil end
+local function ReadScriptHash(y)
+if type(k)~="function"then return nil end
 
-local y,z=RunWithTimeout(r,function()
-return j(x)
+local z,A=RunWithTimeout(s,function()
+return k(y)
 end)
 
-if not y or type(z)~="string"or z==""then
+if not z or type(A)~="string"or A==""then
 return nil
 end
 
-return z
+return A
 end
 
-local function GetScriptHashForInstance(x)
-local y=x:GetDebugId()
-if c.scriptHashByDebugId[y]~=nil then
-return c.scriptHashByDebugId[y]or nil
+local function GetScriptHashForInstance(y)
+local z=y:GetDebugId()
+if c.scriptHashByDebugId[z]~=nil then
+return c.scriptHashByDebugId[z]or nil
 end
 
-local z=ReadScriptHash(x)
-c.scriptHashByDebugId[y]=z or false
-return z
+local A=ReadScriptHash(y)
+c.scriptHashByDebugId[z]=A or false
+return A
 end
 
-local function FetchCachedScriptSourceBatch(x,y)
-if#y==0 then return true end
+local function FetchCachedScriptSourceBatch(y,z)
+if#z==0 then return true end
 
-local z,A=pcall(request,{
+local A,B=pcall(g,{
 Url=e.."/script-source-cache",
 Method="POST",
 Headers=f{
@@ -3157,59 +3241,59 @@ Headers=f{
 "application/json",
 },
 Body=d:JSONEncode{
-clientId=x,
-hashes=y,
+clientId=y,
+hashes=z,
 },
 })
 
-if not z or type(A)~="table"or A.StatusCode~=200 or type(A.Body)~="string"then
+if not A or type(B)~="table"or B.StatusCode~=200 or type(B.Body)~="string"then
 return false
 end
 
-local B,C=pcall(function()
-return d:JSONDecode(A.Body)
+local C,D=pcall(function()
+return d:JSONDecode(B.Body)
 end)
-if not B or type(C)~="table"or type(C.sources)~="table"then
+if not C or type(D)~="table"or type(D.sources)~="table"then
 return false
 end
 
-for D,E in ipairs(C.sources)do
-if type(E)=="table"then
-RememberScriptSourceForHash(E.scriptHash,E.source)
+for E,F in ipairs(D.sources)do
+if type(F)=="table"then
+RememberScriptSourceForHash(F.scriptHash,F.source)
 end
 end
 
 return true
 end
 
-local function FetchCachedScriptSources(x,y)
-if type(request)~="function"then return end
-if type(x)~="string"or x==""then return end
-if type(y)~="table"then return end
+local function FetchCachedScriptSources(y,z)
+if type(g)~="function"then return end
+if type(y)~="string"or y==""then return end
+if type(z)~="table"then return end
 
-local z={}
 local A={}
+local B={}
 local function flush()
-local B=FetchCachedScriptSourceBatch(x,z)
-if B then
-for C,D in z do
-c.sourceCacheCheckedByHash[D]=true
+local C=FetchCachedScriptSourceBatch(y,A)
+if C then
+for D,E in A do
+c.sourceCacheCheckedByHash[E]=true
 end
 end
-table.clear(z)
+table.clear(A)
 end
 
-for B,C in ipairs(y)do
+for C,D in ipairs(z)do
 if(
-type(C)=="string"and
-C~=""and
-not c.sourceCacheByHash[C]and
-not c.sourceCacheCheckedByHash[C]and
-not A[C]
+type(D)=="string"and
+D~=""and
+not c.sourceCacheByHash[D]and
+not c.sourceCacheCheckedByHash[D]and
+not B[D]
 )then
-A[C]=true
-table.insert(z,C)
-if#z>=n then
+B[D]=true
+table.insert(A,D)
+if#A>=o then
 flush()
 end
 end
@@ -3218,413 +3302,413 @@ end
 flush()
 end
 
-local function ReadScriptBytecode(x)
-local y,z=RunWithTimeout(s,function()
-return getscriptbytecode(x)
+local function ReadScriptBytecode(y)
+local z,A=RunWithTimeout(t,function()
+return getscriptbytecode(y)
 end)
-if not y or z==nil then
-return false,z or"Failed to read script bytecode."
+if not z or A==nil then
+return false,A or"Failed to read script bytecode."
 end
-return true,z
+return true,A
 end
 
-local function TryBuiltInDecompile(x)
-if type(i)~="function"then
+local function TryBuiltInDecompile(y)
+if type(j)~="function"then
 return nil,0,"Executor built-in decompile is unavailable.",false
 end
 
-local y=os.clock()
-local z,A=RunWithTimeout(t,function()
-return i(x)
+local z=os.clock()
+local A,B=RunWithTimeout(u,function()
+return j(y)
 end)
-local B=math.floor((os.clock()-y)*1000)
-if not z then
-local C=tostring(A or"Built-in decompile failed.")
-return nil,B,C,string.find(C,"Timed out",1,true)~=nil
+local C=math.floor((os.clock()-z)*1000)
+if not A then
+local D=tostring(B or"Built-in decompile failed.")
+return nil,C,D,string.find(D,"Timed out",1,true)~=nil
 end
-if type(A)~="string"or A==""then
-return nil,B,"Built-in decompile returned no source.",false
-end
-
-return g(A),B
+if type(B)~="string"or B==""then
+return nil,C,"Built-in decompile returned no source.",false
 end
 
-local function IsActiveMappingContext(x,y)
+return h(B),C
+end
+
+local function IsActiveMappingContext(y,z)
 return(
-x==c.generation and
-y~=nil and
-y==c.clientId
+y==c.generation and
+z~=nil and
+z==c.clientId
 )
 end
 
-local function RefreshDecompilerPlan(x,y,z)
-y=y or c.generation
-z=z or c.clientId
-if not IsActiveMappingContext(y,z)then return nil end
-local A=os.clock()
-if not x and v.expiresAt>A then
-return v.providerId
+local function RefreshDecompilerPlan(y,z,A)
+z=z or c.generation
+A=A or c.clientId
+if not IsActiveMappingContext(z,A)then return nil end
+local B=os.clock()
+if not y and w.expiresAt>B then
+return w.providerId
 end
-if v.refreshToken then
-local B=A+2
-repeat task.wait()until not v.refreshToken or os.clock()>=B
-return v.providerId
+if w.refreshToken then
+local C=B+2
+repeat task.wait()until not w.refreshToken or os.clock()>=C
+return w.providerId
 end
-if type(request)~="function"then return nil end
+if type(g)~="function"then return nil end
 
-local B={}
-v.refreshToken=B
+local C={}
+w.refreshToken=C
 
-local C,D=RunWithTimeout(5,function()
-return request{
-Url=e.."/decompile-plan?clientId="..d:UrlEncode(z),
+local D,E=RunWithTimeout(5,function()
+return g{
+Url=e.."/decompile-plan?clientId="..d:UrlEncode(A),
 Method="GET",
 Headers=f{Accept=
 "application/json",
 },
 }
 end)
-if v.refreshToken~=B then return nil end
-v.refreshToken=nil
-if not IsActiveMappingContext(y,z)then return nil end
-if not C or type(D)~="table"or D.StatusCode~=200 or type(D.Body)~="string"then
-v.providerId=nil
-v.expiresAt=A+0.25
+if w.refreshToken~=C then return nil end
+w.refreshToken=nil
+if not IsActiveMappingContext(z,A)then return nil end
+if not D or type(E)~="table"or E.StatusCode~=200 or type(E.Body)~="string"then
+w.providerId=nil
+w.expiresAt=B+0.25
 return nil
 end
 
-local E,F=pcall(function()
-return d:JSONDecode(D.Body)
+local F,G=pcall(function()
+return d:JSONDecode(E.Body)
 end)
-if not E or type(F)~="table"then
-v.providerId=nil
-v.expiresAt=A+0.25
+if not F or type(G)~="table"then
+w.providerId=nil
+w.expiresAt=B+0.25
 return nil
 end
 
-v.providerId=if type(F.providerId)=="string"then F.providerId else nil
-local G=math.max(0.25,math.min((tonumber(F.ttlMs)or 1000)/1000,5))
-v.expiresAt=os.clock()+G
-return v.providerId
+w.providerId=if type(G.providerId)=="string"then G.providerId else nil
+local H=math.max(0.25,math.min((tonumber(G.ttlMs)or 1000)/1000,5))
+w.expiresAt=os.clock()+H
+return w.providerId
 end
 
-local function ShouldUseDirectBuiltIn(x,y,z)
-if x~="builtin"then return false end
-if v.blockedBuiltinUntil>os.clock()then return false end
-return type(i)=="function"and RefreshDecompilerPlan(false,y,z)=="builtin"
+local function ShouldUseDirectBuiltIn(y,z,A)
+if y~="builtin"then return false end
+if w.blockedBuiltinUntil>os.clock()then return false end
+return type(j)=="function"and RefreshDecompilerPlan(false,z,A)=="builtin"
 end
 
-local function PostBuiltInObservation(x,y,z)
-if not IsActiveMappingContext(y,z)then return end
-local A=c.session
-if not A then return end
-w.revision+=1
-x.clientId=z
-x.providerId="builtin"
-x.observationSessionId=A.id
-x.observationSessionStartedAt=A.startedAt
-x.observationRevision=w.revision
-x.beginObservationSession=true
+local function PostBuiltInObservation(y,z,A)
+if not IsActiveMappingContext(z,A)then return end
+local B=c.session
+if not B then return end
+x.revision+=1
+y.clientId=A
+y.providerId="builtin"
+y.observationSessionId=B.id
+y.observationSessionStartedAt=B.startedAt
+y.observationRevision=x.revision
+y.beginObservationSession=true
 task.defer(function()
-if not IsActiveMappingContext(y,z)then return end
-pcall(request,{
+if not IsActiveMappingContext(z,A)then return end
+pcall(g,{
 Url=e.."/decompiler-observations",
 Method="POST",
 Headers=f{
 ["Content-Type"]="application/json",Accept=
 "application/json",
 },
-Body=d:JSONEncode(x),
+Body=d:JSONEncode(y),
 })
 end)
 end
 
-local function ReportBuiltInDecompileSuccess(x,y,z)
-if not IsActiveMappingContext(y,z)then return end
-local A=os.clock()
-if w.lastAt==nil or A-w.lastAt>2 then
-w.startedAt=A
-w.samples=0
+local function ReportBuiltInDecompileSuccess(y,z,A)
+if not IsActiveMappingContext(z,A)then return end
+local B=os.clock()
+if x.lastAt==nil or B-x.lastAt>2 then
+x.startedAt=B
+x.samples=0
 end
 
-w.lastAt=A
-w.startedAt=w.startedAt or A
-w.samples+=1
-if A-w.startedAt<0.25 then return end
-if A-w.lastReportAt<0.5 then return end
-w.lastReportAt=A
+x.lastAt=B
+x.startedAt=x.startedAt or B
+x.samples+=1
+if B-x.startedAt<0.25 then return end
+if B-x.lastReportAt<0.5 then return end
+x.lastReportAt=B
 
-local B=math.max(0.001,A-w.startedAt)
-PostBuiltInObservation({
-latencyMs=x,
-successCount=w.samples,
-throughputPerSecond=w.samples/B,
-throughputWindowMs=B*1000,
-throughputSamples=w.samples,
-},y,z)
-end
-
-local function ReportBuiltInDecompileFailure(x,y,z,A,B)
-if not IsActiveMappingContext(A,B)then return end
-v.providerId=nil
-v.expiresAt=0
-v.blockedBuiltinUntil=os.clock()+5
-if z==true then m:Reduce()end
+local C=math.max(0.001,B-x.startedAt)
 PostBuiltInObservation({
 latencyMs=y,
-errorMessage=tostring(x or"Built-in decompile failed."),
-timedOut=z==true,
-},A,B)
+successCount=x.samples,
+throughputPerSecond=x.samples/C,
+throughputWindowMs=C*1000,
+throughputSamples=x.samples,
+},z,A)
 end
 
-local function RequestServerDecompile(x,y,z,A)
-if type(request)~="function"then
+local function ReportBuiltInDecompileFailure(y,z,A,B,C)
+if not IsActiveMappingContext(B,C)then return end
+w.providerId=nil
+w.expiresAt=0
+w.blockedBuiltinUntil=os.clock()+5
+if A==true then n:Reduce()end
+PostBuiltInObservation({
+latencyMs=z,
+errorMessage=tostring(y or"Built-in decompile failed."),
+timedOut=A==true,
+},B,C)
+end
+
+local function RequestServerDecompile(y,z,A,B)
+if type(g)~="function"then
 return nil,"request function is unavailable"
 end
 
-y=if type(y)=="table"then y else{}
-local B={
-clientId=A,
-bytecode=h(x),
-builtinAvailable=type(i)=="function",
+z=if type(z)=="table"then z else{}
+local C={
+clientId=B,
+bytecode=i(y),
+builtinAvailable=type(j)=="function",
 }
-if type(y.builtinSource)=="string"then
-B.builtinSource=y.builtinSource
+if type(z.builtinSource)=="string"then
+C.builtinSource=z.builtinSource
 end
-if type(y.builtinLatencyMs)=="number"then
-B.builtinLatencyMs=y.builtinLatencyMs
+if type(z.builtinLatencyMs)=="number"then
+C.builtinLatencyMs=z.builtinLatencyMs
 end
-if type(y.requestedProvider)=="string"then
-B.requestedProvider=y.requestedProvider
+if type(z.requestedProvider)=="string"then
+C.requestedProvider=z.requestedProvider
 end
-if type(y.disabledProviders)=="table"then
-B.disabledProviders=y.disabledProviders
+if type(z.disabledProviders)=="table"then
+C.disabledProviders=z.disabledProviders
 end
 
-local C,D=RunWithTimeout(u,function()
-return request{
+local D,E=RunWithTimeout(v,function()
+return g{
 Url=e.."/decompile",
 Method="POST",
 Headers=f{
 ["Content-Type"]="application/json",Accept=
 "application/json",
 },
-Body=d:JSONEncode(B),
+Body=d:JSONEncode(C),
 }
 end)
-if not C then
-return nil,tostring(D)
+if not D then
+return nil,tostring(E)
 end
 
-if type(D)~="table"or type(D.Body)~="string"then
+if type(E)~="table"or type(E.Body)~="string"then
 return nil,"Decompile server returned no response body."
 end
 
-local E,F=pcall(function()
-return d:JSONDecode(D.Body)
+local F,G=pcall(function()
+return d:JSONDecode(E.Body)
 end)
-if not E or type(F)~="table"then
+if not F or type(G)~="table"then
 return nil,"Decompile server returned invalid JSON."
 end
 
-local G
-if type(F.attemptedProviders)=="table"and type(F.attemptedProviders[1])=="string"then
-G=F.attemptedProviders[1]
+local H
+if type(G.attemptedProviders)=="table"and type(G.attemptedProviders[1])=="string"then
+H=G.attemptedProviders[1]
 end
 
-if F.ok==true and type(F.source)=="string"and F.source~=""then
-return g(F.source),nil,false,G
+if G.ok==true and type(G.source)=="string"and G.source~=""then
+return h(G.source),nil,false,H
 end
-if F.needsBuiltin==true and F.providerId=="builtin"then
-return nil,nil,true,G
-end
-
-if type(F.error)=="string"and F.error~=""then
-return nil,F.error,false,G
-end
-if type(F.attempts)=="table"then
-return nil,table.concat(F.attempts,"\n\n"),false,G
+if G.needsBuiltin==true and G.providerId=="builtin"then
+return nil,nil,true,H
 end
 
-return nil,"Decompile server failed without a detailed error.",false,G
+if type(G.error)=="string"and G.error~=""then
+return nil,G.error,false,H
+end
+if type(G.attempts)=="table"then
+return nil,table.concat(G.attempts,"\n\n"),false,H
 end
 
-local function PrepareScriptForMapping(x,y,z,A,B)
-z=z or c.generation
-A=A or c.clientId
-local C=x:GetDebugId()
-local D=GetScriptHashForInstance(x)
-if y and D then
-FetchCachedScriptSources(A,{D})
+return nil,"Decompile server failed without a detailed error.",false,H
 end
 
-local E=D and c.sourceCacheByHash[D]or nil
-if E then
-return{
-debugId=C,
-scriptHash=D,
-source=E,
-}
+local function PrepareScriptForMapping(y,z,A,B,C)
+A=A or c.generation
+B=B or c.clientId
+local D=y:GetDebugId()
+local E=GetScriptHashForInstance(y)
+if z and E then
+FetchCachedScriptSources(B,{E})
 end
 
-local F=RefreshDecompilerPlan(false,z,A)
-local G=B or F
-local H=B=="builtin"
-if H or ShouldUseDirectBuiltIn(G,z,A)then
-return{
-debugId=C,
-scriptHash=D,
-retryProviderId=B,
-useDirectBuiltin=true,
-forceDirectBuiltinRetry=H,
-}
-end
-
-local I,J=ReadScriptBytecode(x)
-if not I then
-return nil,J
-end
-
-return{
-debugId=C,
-scriptHash=D,
-bytecode=J,
-retryProviderId=B,
-}
-end
-
-local function BuildServerOptions(x,y)
-local z={}
-if type(x.retryProviderId)=="string"then
-z.requestedProvider=x.retryProviderId
-end
-if type(y)=="table"then
-for A,B in y do
-z[A]=B
-end
-end
-return if next(z)==nil then nil else z
-end
-
-local function TakeRetryServerOptions(x,y)
-local z=BuildServerOptions(x,y)
-x.retryProviderId=nil
-return z
-end
-
-local function DecompileScriptSource(x,y,z,A)
-z=z or c.generation
-A=A or c.clientId
-local B
-if not y then
-y,B=PrepareScriptForMapping(x,true,z,A)
-end
-if not y then
-return nil,B or"Failed to prepare script for decompile.",nil,nil
-end
-
-if type(y.source)=="string"and y.source~=""then
-return y.source,nil,y.scriptHash,y
-end
-if y.useDirectBuiltin==true then
-local C=y.forceDirectBuiltinRetry==true or
-k.CanAttemptBuiltIn(
-y,
-v.blockedBuiltinUntil,
-os.clock()
-)
-if C then
-y.retryProviderId=nil
-y.forceDirectBuiltinRetry=nil
-y.initialProviderId=y.initialProviderId or"builtin"
-k.MarkBuiltInAttempted(y)
-local D,E,F,G=TryBuiltInDecompile(x)
-if D then
-ReportBuiltInDecompileSuccess(E,z,A)
-if y.scriptHash then
-RememberScriptSourceForHash(y.scriptHash,D)
-end
-return D,nil,y.scriptHash,y
-end
-
-k.DisableBuiltIn(y)
-ReportBuiltInDecompileFailure(F,E,G,z,A)
-end
-local D,E=l.MaterializeServerFallback(y,function()
-return ReadScriptBytecode(x)
-end)
-if not D then
-return nil,E,y.scriptHash,y
-end
-end
-
-if type(y.bytecode)~="string"then
-return nil,"Prepared script is missing bytecode.",y.scriptHash,y
-end
-
-local C=TakeRetryServerOptions(
-y,
-if y.builtinDisabled==true then{disabledProviders={"builtin"}}else nil
-)
-local D,E,F,G=RequestServerDecompile(
-y.bytecode,
-C,
-z,
-A
-)
-if not y.initialProviderId and type(G)=="string"then
-y.initialProviderId=G
-end
+local F=E and c.sourceCacheByHash[E]or nil
 if F then
-local H=k.CanAttemptBuiltIn(
-y,
-v.blockedBuiltinUntil,
-os.clock()
-)
-if H then
-k.MarkBuiltInAttempted(y)
-local I,J,K,L=TryBuiltInDecompile(x)
-if I then
-ReportBuiltInDecompileSuccess(J,z,A)
-D,E=RequestServerDecompile(y.bytecode,BuildServerOptions(y,{
-requestedProvider="builtin",
-builtinSource=I,
-builtinLatencyMs=J,
-}),z,A)
-else
-k.DisableBuiltIn(y)
-ReportBuiltInDecompileFailure(K,J,L,z,A)
-D,E=RequestServerDecompile(y.bytecode,BuildServerOptions(y,{
-disabledProviders={"builtin"},
-}),z,A)
-end
-else
-k.DisableBuiltIn(y)
-D,E=RequestServerDecompile(y.bytecode,BuildServerOptions(y,{
-disabledProviders={"builtin"},
-}),z,A)
-end
-end
-if not D then
-return nil,E,y.scriptHash,y
+return{
+debugId=D,
+scriptHash=E,
+source=F,
+}
 end
 
-if y.scriptHash then
-RememberScriptSourceForHash(y.scriptHash,D)
+local G=RefreshDecompilerPlan(false,A,B)
+local H=C or G
+local I=C=="builtin"
+if I or ShouldUseDirectBuiltIn(H,A,B)then
+return{
+debugId=D,
+scriptHash=E,
+retryProviderId=C,
+useDirectBuiltin=true,
+forceDirectBuiltinRetry=I,
+}
 end
-return D,nil,y.scriptHash,y
+
+local J,K=ReadScriptBytecode(y)
+if not J then
+return nil,K
+end
+
+return{
+debugId=D,
+scriptHash=E,
+bytecode=K,
+retryProviderId=C,
+}
+end
+
+local function BuildServerOptions(y,z)
+local A={}
+if type(y.retryProviderId)=="string"then
+A.requestedProvider=y.retryProviderId
+end
+if type(z)=="table"then
+for B,C in z do
+A[B]=C
+end
+end
+return if next(A)==nil then nil else A
+end
+
+local function TakeRetryServerOptions(y,z)
+local A=BuildServerOptions(y,z)
+y.retryProviderId=nil
+return A
+end
+
+local function DecompileScriptSource(y,z,A,B)
+A=A or c.generation
+B=B or c.clientId
+local C
+if not z then
+z,C=PrepareScriptForMapping(y,true,A,B)
+end
+if not z then
+return nil,C or"Failed to prepare script for decompile.",nil,nil
+end
+
+if type(z.source)=="string"and z.source~=""then
+return z.source,nil,z.scriptHash,z
+end
+if z.useDirectBuiltin==true then
+local D=z.forceDirectBuiltinRetry==true or
+l.CanAttemptBuiltIn(
+z,
+w.blockedBuiltinUntil,
+os.clock()
+)
+if D then
+z.retryProviderId=nil
+z.forceDirectBuiltinRetry=nil
+z.initialProviderId=z.initialProviderId or"builtin"
+l.MarkBuiltInAttempted(z)
+local E,F,G,H=TryBuiltInDecompile(y)
+if E then
+ReportBuiltInDecompileSuccess(F,A,B)
+if z.scriptHash then
+RememberScriptSourceForHash(z.scriptHash,E)
+end
+return E,nil,z.scriptHash,z
+end
+
+l.DisableBuiltIn(z)
+ReportBuiltInDecompileFailure(G,F,H,A,B)
+end
+local E,F=m.MaterializeServerFallback(z,function()
+return ReadScriptBytecode(y)
+end)
+if not E then
+return nil,F,z.scriptHash,z
+end
+end
+
+if type(z.bytecode)~="string"then
+return nil,"Prepared script is missing bytecode.",z.scriptHash,z
+end
+
+local D=TakeRetryServerOptions(
+z,
+if z.builtinDisabled==true then{disabledProviders={"builtin"}}else nil
+)
+local E,F,G,H=RequestServerDecompile(
+z.bytecode,
+D,
+A,
+B
+)
+if not z.initialProviderId and type(H)=="string"then
+z.initialProviderId=H
+end
+if G then
+local I=l.CanAttemptBuiltIn(
+z,
+w.blockedBuiltinUntil,
+os.clock()
+)
+if I then
+l.MarkBuiltInAttempted(z)
+local J,K,L,M=TryBuiltInDecompile(y)
+if J then
+ReportBuiltInDecompileSuccess(K,A,B)
+E,F=RequestServerDecompile(z.bytecode,BuildServerOptions(z,{
+requestedProvider="builtin",
+builtinSource=J,
+builtinLatencyMs=K,
+}),A,B)
+else
+l.DisableBuiltIn(z)
+ReportBuiltInDecompileFailure(L,K,M,A,B)
+E,F=RequestServerDecompile(z.bytecode,BuildServerOptions(z,{
+disabledProviders={"builtin"},
+}),A,B)
+end
+else
+l.DisableBuiltIn(z)
+E,F=RequestServerDecompile(z.bytecode,BuildServerOptions(z,{
+disabledProviders={"builtin"},
+}),A,B)
+end
+end
+if not E then
+return nil,F,z.scriptHash,z
+end
+
+if z.scriptHash then
+RememberScriptSourceForHash(z.scriptHash,E)
+end
+return E,nil,z.scriptHash,z
 end
 
 local function ResetDecompilerClient()
-v.providerId=nil
-v.expiresAt=0
-v.refreshToken=nil
-v.blockedBuiltinUntil=0
-w.startedAt=nil
-w.lastAt=nil
-w.samples=0
-w.lastReportAt=0
-w.revision=0
+w.providerId=nil
+w.expiresAt=0
+w.refreshToken=nil
+w.blockedBuiltinUntil=0
+x.startedAt=nil
+x.lastAt=nil
+x.samples=0
+x.lastReportAt=0
+x.revision=0
 end
 
 return{
@@ -3636,7 +3720,7 @@ RefreshDecompilerPlan=RefreshDecompilerPlan,
 ResetDecompilerClient=ResetDecompilerClient,
 TakeRetryServerOptions=TakeRetryServerOptions,
 }
-end end function a.r():typeof(__modImpl())local b=a.cache.r if not b then b={c=__modImpl()}a.cache.r=b end return b.c end end do local function __modImpl()
+end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.ScriptMappingPipeline
@@ -4259,7 +4343,7 @@ ResumeDeferredScriptMappings=ResumeDeferredScriptMappings,
 StartFailedScriptResync=StartFailedScriptResync,
 StartScriptMapping=StartScriptMapping,
 }
-end end function a.s():typeof(__modImpl())local b=a.cache.s if not b then b={c=__modImpl()}a.cache.s=b end return b.c end end do local function __modImpl()
+end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.LogService
@@ -4380,9 +4464,9 @@ local f=table.pack(loadstring(e.source)())
 
 return f
 end)
-end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
+end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 return function(c,d)
 local e=c.ScriptMappingPipeline
@@ -4468,9 +4552,9 @@ end
 
 return"-- Lines "..r.."-"..t.." of "..o.."\n"..table.concat(u,"\n")..x
 end)
-end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
+end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 local c=false
 local d=1000
 
@@ -4682,7 +4766,7 @@ r.Note="Output capped at "..o.." nodes. Narrow with classFilter, lower maxDepth,
 end
 return r
 end)
-end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
+end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -4972,9 +5056,9 @@ end)
 return o,true
 end
 
-return b end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
+return b end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
 
-local b=a.w()
+local b=a.x()
 
 return function(c,d)
 d:BindToType("ensure-remote-spy",function(e)
@@ -5108,7 +5192,7 @@ count=#m,
 results=m
 }
 end)
-end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
+end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local function GetRemoteIdentity(d)
@@ -5278,9 +5362,9 @@ end
 
 error("Invalid remote-spy operation: "..tostring(e))
 end)
-end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
+end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 return function(c,d)
 local e=c.VirtualInputManager
@@ -5377,7 +5461,7 @@ status="success",
 message="Successfully fired click signals on Button."
 }
 end)
-end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
+end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -5449,7 +5533,8 @@ limitBytes=d.sourceBudgetBytes,
 },
 },
 capabilities={
-request=type(request)=="function",
+request=b.RequestAvailable==true,
+requestProvider=b.HttpRequestProvider,
 websocket=b.WebSocketAvailable==true,
 loadstring=type(loadstring)=="function",
 setthreadidentity=type(setthreadidentity)=="function",
@@ -5475,9 +5560,9 @@ getgenv().Cobalt.__RobloxMcpInternal==true and"bundled"or"external"
 },
 }
 end)
-end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
+end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 return function(c,d)
 d:BindToTypeStructured("inspect-instance",function(e)
@@ -5577,7 +5662,7 @@ end
 
 return g
 end)
-end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
+end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -5696,7 +5781,7 @@ end)
 c:BindToTypeStructured("script-index-resync",function(j)
 return StartFresh"resync_started"
 end)
-end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
+end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=500
@@ -5974,15 +6059,15 @@ e=false
 if not h then error(i)end
 return i
 end)
-end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 c:BindToTypeStructured("executor-capabilities",function(d)
 return b.RuntimeCapabilities:Probe()
 end)
-end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local function ClampInteger(c,d,e,f)
 local g=tonumber(c)
@@ -6259,9 +6344,9 @@ local h=e:List(g.cursor,g.limit,g.kind)
 h.registry=e:Stats()
 return h
 end)
-end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local function ClampInteger(c,d,e,f)
 local g=tonumber(c)
@@ -6403,9 +6488,9 @@ nextCursor=(s or t<q)and t or nil,
 results=p,
 }
 end)
-end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local function ClampInteger(c,d,e,f)
 local g=tonumber(c)
@@ -6602,7 +6687,7 @@ truncated=#k>#l,
 end
 error("Unknown runtime-actors operation: "..tostring(h))
 end)
-end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
+end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.GcExplorer
@@ -6630,9 +6715,9 @@ end)
 c:BindToTypeStructured("runtime-references",function(e)
 return d:References(e)
 end)
-end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
+end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 local function ClampInteger(c,d,e,f)
 local g=tonumber(c)
@@ -6746,9 +6831,9 @@ p.operation=h
 p.completed=true
 return p
 end)
-end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
+end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
+local b=a.d()
 
 return function(c,d)
 local e=c.VirtualInputManager
@@ -6997,10 +7082,10 @@ if h.action=="click-detector"then return FireDetector(h)end
 if h.action=="touch"then return FireTouch(h)end
 error("Unsupported input action: "..tostring(h.action))
 end)
-end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
+end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
 
-local b=a.c()
-local c=a.w()
+local b=a.d()
+local c=a.x()
 
 local d="__ROBLOX_MCP_EVENT_JOURNAL_V2"
 local e="__ROBLOX_MCP_EVENT_JOURNAL_V1"
@@ -7464,7 +7549,7 @@ return WaitForRemote(w)
 end
 error("Unsupported wait mode: "..tostring(w.mode))
 end)
-end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
+end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CreateBridge
@@ -7517,10 +7602,9 @@ g()
 end
 end
 
-local p={a.t()
-,a.u()
+local p={a.u()
 ,a.v()
-,a.x()
+,a.w()
 ,a.y()
 ,a.z()
 ,a.A()
@@ -7535,6 +7619,7 @@ local p={a.t()
 ,a.J()
 ,a.K()
 ,a.L()
+,a.M()
 ,
 }
 for q,r in p do
@@ -7548,7 +7633,7 @@ e.bridge=nil
 end
 task.wait(1)
 end
-end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end end
+end end function a.N():typeof(__modImpl())local b=a.cache.N if not b then b={c=__modImpl()}a.cache.N=b end return b.c end end end
 
 
 
@@ -7792,6 +7877,8 @@ end
 local y=getnilinstances or function()return{}end
 
 
+local z,A=a.b().Resolve(getgenv())
+
 
 
 local function ResolveWebSocketConnect()
@@ -7810,52 +7897,52 @@ end
 return nil
 end
 
-local z=ResolveWebSocketConnect()
-local A=z~=nil and getgenv().DisableWebSocket~=true
+local B=ResolveWebSocketConnect()
+local C=B~=nil and getgenv().DisableWebSocket~=true
 
 
 local function GenerateSessionGuid()
-local B,C=pcall(function()
+local D,E=pcall(function()
 return l:GenerateGUID(false)
 end)
-if B and type(C)=="string"and C~=""then
-return C
+if D and type(E)=="string"and E~=""then
+return E
 end
 return tostring(os.clock()).."-"..tostring(math.random(1,1000000000))
 end
 
 local function GetClientIdentityKey()
-local B=n.LocalPlayer
+local D=n.LocalPlayer
 return table.concat({
 tostring(game.PlaceId or 0),
 tostring(game.JobId or""),
-tostring(B and B.UserId or 0),
+tostring(D and D.UserId or 0),
 },":")
 end
 
 local function GetStableClientSessionId()
-local B=GetClientIdentityKey()
-if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=B then
+local D=GetClientIdentityKey()
+if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=D then
 getgenv().MCP_ClientSessionId=GenerateSessionGuid()
-getgenv().MCP_ClientIdentityKey=B
+getgenv().MCP_ClientIdentityKey=D
 end
 return getgenv().MCP_ClientSessionId
 end
 
 local function GetRegistrationInfo()
-local B=n.LocalPlayer
-local C="Unknown"
+local D=n.LocalPlayer
+local E="Unknown"
 pcall(function()
-local D=h:GetProductInfo(game.PlaceId)
-C=D.Name
+local F=h:GetProductInfo(game.PlaceId)
+E=F.Name
 end)
 return{
 type="register",
-username=B and B.Name or"Unknown",
-userId=B and B.UserId or 0,
+username=D and D.Name or"Unknown",
+userId=D and D.UserId or 0,
 placeId=game.PlaceId,
 jobId=game.JobId,
-placeName=C,
+placeName=E,
 sessionId=GetStableClientSessionId(),
 clientToken=getgenv().MCP_ClientToken,
 }
@@ -7863,173 +7950,181 @@ end
 
 
 
-local B=a.b().new{
+local D=a.c().new{
 RegistryId=GenerateSessionGuid(),
 MaxHandles=getgenv().MCP_RuntimeMaxHandles,
 DefaultTtlSeconds=getgenv().MCP_RuntimeHandleTtlSeconds,
 }
-local C=a.d().new{
-Handles=B,
+local E=a.e().new{
+Handles=D,
 DefaultDepth=getgenv().MCP_RuntimeValueDepth,
 DefaultEntries=getgenv().MCP_RuntimeValueEntries,
 DefaultStringBytes=getgenv().MCP_RuntimeValueStringBytes,
 }
-local D=a.e().new{
-ConnectorVersion="2",
-WebSocketAvailable=A,
+local F=a.f().new{
+ConnectorVersion="3",
+RequestAvailable=z~=nil,
+HttpRequestProvider=A,
+WebSocketAvailable=C,
 }
-local E=a.f().new{
-Handles=B,
-TypedValues=C,
+local G=a.g().new{
+Handles=D,
+TypedValues=E,
 MaxSnapshots=getgenv().MCP_GcMaxSnapshots,
 DefaultScanLimit=getgenv().MCP_GcDefaultScanLimit,
 TableScanLimit=getgenv().MCP_GcTableScanLimit,
 }
-local F=a.g(){
+local H=a.h(){
 CoreGui=i,
 TweenService=o,
 }
 
 
-local G=a.h(){
+local I=a.i(){
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeWebSocketURL=d,
 BridgeAuthToken=e,
 BridgeRequestHeaders=BridgeRequestHeaders,
-WebSocketAvailable=A,
-WebSocketConnect=z,
+Request=z,
+HttpGet=function(I)return game:HttpGet(I)end,
+WebSocketAvailable=C,
+WebSocketConnect=B,
 GetRegistrationInfo=GetRegistrationInfo,
 SanitizeForOutput=SanitizeForOutput,
 LuaEncode=s,
 }
-local H=G.CreateBridge
+local J=I.CreateBridge
 
 
-local I=a.i()
-local J=a.j()
-local K=a.k()
-local L=a.l()
-local M=a.m()
-local N=J.new()
-local O=math.max(
+local K=a.j()
+local L=a.k()
+local M=a.l()
+local N=a.m()
+local O=a.n()
+local P=L.new()
+local Q=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_ScriptMappingWorkers)or 24),64)
 )
-local P=a.n().new(
-N,
-O
+local R=a.o().new(
+P,
+Q
 )
-local Q=math.max(
+local S=math.max(
 5,
 math.min(tonumber(getgenv().MCP_FailedScriptResyncInterval)or 30,600)
 )
-local R=a.o().new(N,{
-IntervalSeconds=Q,
-MaxDelaySeconds=math.max(Q,300),
+local T=a.p().new(P,{
+IntervalSeconds=S,
+MaxDelaySeconds=math.max(S,300),
 BatchSize=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_FailedScriptResyncBatchSize)or 8),32)
 ),
 })
-local S=a.p().new(
-N,
-R
+local U=a.q().new(
+P,
+T
 )
-local T=a.q(){
-ScriptMappingPipeline=N,
+local V=a.r(){
+ScriptMappingPipeline=P,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
-JobStatus=S,
+Request=z,
+JobStatus=U,
 }
-local U=a.r(){
-ScriptMappingPipeline=N,
+local W=a.s(){
+ScriptMappingPipeline=P,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
+Request=z,
 StripDecompilerBanner=StripDecompilerBanner,
 base64_encode=p,
 BuiltInDecompile=r,
 GetScriptHash=q,
-DecompilerAttemptState=L,
-PreparedScript=M,
-Concurrency=P,
+DecompilerAttemptState=N,
+PreparedScript=O,
+Concurrency=R,
 }
-local V=a.s(){
-ScriptMappingPipeline=N,
-WorkerPool=I,
-UploadSession=K,
+local X=a.t(){
+ScriptMappingPipeline=P,
+WorkerPool=K,
+UploadSession=M,
 GenerateSessionGuid=GenerateSessionGuid,
 CoreGui=i,
 CorePackages=j,
 ScriptContext=k,
 getnilinstances=y,
-WorkerCount=O,
-Concurrency=P,
-JobStatus=S,
-FailedResync=R,
-UploadClient=T,
-DecompilerClient=U,
+WorkerCount=Q,
+Concurrency=R,
+JobStatus=U,
+FailedResync=T,
+UploadClient=V,
+DecompilerClient=W,
 }
-local W=T.StartUploadQueue
+local Y=V.StartUploadQueue
 local function PublishScriptMappingStatus()
-S:Publish()
+U:Publish()
 end
-local X=V.StartScriptMapping
-local Y=V.StartFailedScriptResync
-local Z=V.ResetScriptMappingState
-local aa=V.ResumeDeferredScriptMappings
-local ab=V.GetScriptByDebugId
-local ac=V.QueueMappedScriptSource
-local ad=V.DecompileScriptSource
+local Z=X.StartScriptMapping
+local aa=X.StartFailedScriptResync
+local ab=X.ResetScriptMappingState
+local ac=X.ResumeDeferredScriptMappings
+local ad=X.GetScriptByDebugId
+local ae=X.QueueMappedScriptSource
+local af=X.DecompileScriptSource
 
-local function WaitForBridgeClientId(ae)
-local af=os.clock()+5
+local function WaitForBridgeClientId(ag)
+local ah=os.clock()+5
 repeat
-if ae.ClientId then
-return ae.ClientId
+if ag.ClientId then
+return ag.ClientId
 end
-if not ae.Connected then
+if not ag.Connected then
 return nil
 end
 task.wait(0.05)
-until os.clock()>af
+until os.clock()>ah
 
 return nil
 end
 
 getgenv().MCP_Loaded=true
 getgenv().MCP_Loading=nil
-local ae,af=pcall(function()a.M()
+local ag,ah=pcall(function()a.N()
 {
-CreateBridge=H,
+CreateBridge=J,
 WaitForBridgeClientId=WaitForBridgeClientId,
-ScriptMappingPipeline=N,
-StartUploadQueue=W,
+ScriptMappingPipeline=P,
+StartUploadQueue=Y,
 PublishScriptMappingStatus=PublishScriptMappingStatus,
-ResetScriptMappingState=Z,
-StartScriptMapping=X,
-StartFailedScriptResync=Y,
-ResumeDeferredScriptMappings=aa,
-GetScriptByDebugId=ab,
-DecompileScriptSource=ad,
-QueueMappedScriptSource=ac,
+ResetScriptMappingState=ab,
+StartScriptMapping=Z,
+StartFailedScriptResync=aa,
+ResumeDeferredScriptMappings=ac,
+GetScriptByDebugId=ad,
+DecompileScriptSource=af,
+QueueMappedScriptSource=ae,
 LogService=m,
 MarketplaceService=h,
 VirtualInputManager=g,
 Players=n,
 LuaEncode=s,
-WebSocketAvailable=A,
-RuntimeHandles=B,
-RuntimeValues=C,
-RuntimeCapabilities=D,
-GcExplorer=E,
-ToastHost=F,
+WebSocketAvailable=C,
+RequestAvailable=z~=nil,
+HttpRequestProvider=A,
+RuntimeHandles=D,
+RuntimeValues=E,
+RuntimeCapabilities=F,
+GcExplorer=G,
+ToastHost=H,
 }
 end)
-if not ae then
+if not ag then
 getgenv().MCP_Loaded=nil
 getgenv().MCP_Loading=nil
-error(af)
+error(ah)
 end

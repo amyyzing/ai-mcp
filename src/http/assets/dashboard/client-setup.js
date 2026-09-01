@@ -1,6 +1,7 @@
 import {
     DEFAULT_BRIDGE_URL,
     buildLoaderSnippet,
+    buildOneLineLoaderSnippet,
     normalizeBridgeUrl,
 } from './connector-snippet.mjs';
 
@@ -81,7 +82,11 @@ function buildDashboardMcpRelayCopySnippet(bridgeUrl) {
 
 function makeConnector(bridgeUrl) {
     const normalized = normalizeBridgeUrl(bridgeUrl);
-    return { bridgeUrl: normalized, loaderSnippet: buildLoaderSnippet(normalized) };
+    return {
+        bridgeUrl: normalized,
+        loaderSnippet: buildLoaderSnippet(normalized),
+        oneLineLoaderSnippet: buildOneLineLoaderSnippet(normalized),
+    };
 }
 
 function getConnectorFor(mode) {
@@ -465,7 +470,7 @@ function renderConnectorCode(connector) {
     const target = getTargetCopy();
     const code = addClientTarget === 'mcp'
         ? buildDashboardMcpRelaySnippet(connector.bridgeUrl)
-        : connector.loaderSnippet;
+        : (connector.oneLineLoaderSnippet || connector.loaderSnippet);
     const copyCode = addClientTarget === 'mcp'
         ? buildDashboardMcpRelayCopySnippet(connector.bridgeUrl)
         : code;

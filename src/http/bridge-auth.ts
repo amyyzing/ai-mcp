@@ -8,8 +8,22 @@ import { isAuthorizedLocalAdminRequest, isLoopbackAddress } from "./local-admin.
 export const BRIDGE_AUTH_HEADER = "x-roblox-mcp-token";
 
 const configuredBridgeToken = process.env.ROBLOX_MCP_AUTH_TOKEN?.trim() || null;
+const configuredConnectorToken =
+  process.env.ROBLOX_MCP_CONNECTOR_TOKEN?.trim() || null;
 const bridgeToken =
   configuredBridgeToken || crypto.randomBytes(32).toString("base64url");
+const connectorToken = configuredConnectorToken || bridgeToken;
+const connectorPaths = new Set([
+  "/register",
+  "/poll",
+  "/respond",
+  "/script.luau",
+  "/script-sources",
+  "/script-source-cache",
+  "/decompile",
+  "/decompile-plan",
+  "/decompiler-observations",
+]);
 const explicitlyAllowedHosts = new Set(
   (process.env.ROBLOX_MCP_ALLOWED_HOSTS || "")
     .split(",")
@@ -34,13 +48,20 @@ function hostIsAllowed(hostname: string): boolean {
   return normalized === configuredHost;
 }
 
-function tokensMatch(received: string): boolean {
-  const expected = Buffer.from(bridgeToken);
+function tokensMatch(received: string, expectedToken: string): boolean {
+  const expected = Buffer.from(expectedToken);
   const actual = Buffer.from(received);
   return (
     expected.length === actual.length &&
     crypto.timingSafeEqual(expected, actual)
   );
+}
+
+function isConnectorRequest(req: IncomingMessage, url: URL): boolean {
+  const isWebSocket =
+    typeof req.headers.upgrade === "string" &&
+    req.headers.upgrade.toLowerCase() === "websocket";
+  return isWebSocket || connectorPaths.has(url.pathname);
 }
 
 function bearerToken(req: IncomingMessage): string | null {
@@ -71,8 +92,16 @@ export function getBridgeAuthToken(): string {
   return bridgeToken;
 }
 
+export function getConnectorAuthToken(): string {
+  return connectorToken;
+}
+
 export function hasConfiguredBridgeAuthToken(): boolean {
   return configuredBridgeToken !== null;
+}
+
+export function hasConfiguredConnectorAuthToken(): boolean {
+  return configuredConnectorToken !== null;
 }
 
 export function bridgeAuthHeaders(): Record<string, string> {
@@ -140,11 +169,13 @@ export function isAuthorizedBridgeRequest(
 
   const authRequired =
     configuredBridgeToken !== null ||
+    configuredConnectorToken !== null ||
     !isLoopbackAddress(req.socket.remoteAddress);
   if (!authRequired) return true;
 
   const token = requestToken(req, url);
-  return token !== null && tokensMatch(token);
+  if (token === null) return false;
+  return tokensMatch(token, isConnectorRequest(req, url) ? connectorToken : bridgeToken);
 }
 
 export function rejectForbiddenRequest(

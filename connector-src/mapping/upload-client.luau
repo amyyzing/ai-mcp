@@ -3,6 +3,7 @@ local ScriptMappingPipeline = dependencies.ScriptMappingPipeline
 local HttpService = dependencies.HttpService
 local BridgeHTTPURL = dependencies.BridgeHTTPURL
 local BridgeRequestHeaders = dependencies.BridgeRequestHeaders
+local Request = dependencies.Request
 local JobStatus = dependencies.JobStatus
 local UploadBatchMax = 64
 local UploadBatchMaxBytes = 8 * 1024 * 1024
@@ -46,7 +47,7 @@ local function UploadScriptSourceBatch(clientId, items)
     local projectedFinished = ScriptMappingPipeline:IsFinished(projectedProcessedSources)
     local revision = session:NextRevision()
 
-    local ok, response = pcall(request, {
+    local ok, response = pcall(Request, {
         Url = BridgeHTTPURL .. "/script-sources",
         Method = "POST",
         Headers = BridgeRequestHeaders({

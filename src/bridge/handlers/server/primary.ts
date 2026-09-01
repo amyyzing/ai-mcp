@@ -8,6 +8,7 @@ import {
 import {
   getBridgeAuthToken,
   hasConfiguredBridgeAuthToken,
+  hasConfiguredConnectorAuthToken,
   isAllowedRequestOrigin,
   isAuthorizedBridgeRequest,
 } from "../../../http/bridge-auth.js";
@@ -59,11 +60,16 @@ export async function startAsPrimary(): Promise<void> {
         `[Primary] MCP Bridge listening on ${BRIDGE_HOST}:${WS_PORT} (WebSocket + HTTP)`
       );
       if (!isLoopbackAddress(BRIDGE_HOST)) {
-        console.error(
-          hasConfiguredBridgeAuthToken()
-            ? "[Security] Remote bridge access requires ROBLOX_MCP_AUTH_TOKEN."
-            : `[Security] Remote bridge pairing token for this run: ${getBridgeAuthToken()}`
-        );
+        if (hasConfiguredBridgeAuthToken()) {
+          console.error("[Security] Remote agent access requires ROBLOX_MCP_AUTH_TOKEN.");
+          console.error(
+            hasConfiguredConnectorAuthToken()
+              ? "[Security] Roblox connectors use the separate ROBLOX_MCP_CONNECTOR_TOKEN."
+              : "[Security] Roblox connectors currently share the agent token; set ROBLOX_MCP_CONNECTOR_TOKEN to isolate them."
+          );
+        } else {
+          console.error(`[Security] Remote bridge pairing token for this run: ${getBridgeAuthToken()}`);
+        }
       }
 
       const wss = new WebSocketServer({

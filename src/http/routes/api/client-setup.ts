@@ -7,6 +7,7 @@ import {
   DEFAULT_BRIDGE_URL,
   SERVER_PORT,
   buildLoaderSnippet,
+  buildOneLineLoaderSnippet,
   normalizeBridgeUrl,
 } from "../../../shared/connector-snippet.mjs";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../../../shared/local-addresses.mjs";
 import { mcpServerEntry, mcpServersRecipeJson } from "../../../shared/mcp-recipe.mjs";
 import { readJsonBody } from "../../body.js";
+import { getConnectorAuthToken } from "../../bridge-auth.js";
 
 const COMMAND_TIMEOUT_MS = 30000;
 const LOOKUP_TIMEOUT_MS = 1500;
@@ -80,11 +82,17 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-function connector(bridgeUrl: string): { bridgeUrl: string; loaderSnippet: string } {
+function connector(bridgeUrl: string): {
+  bridgeUrl: string;
+  loaderSnippet: string;
+  oneLineLoaderSnippet: string;
+} {
   const normalized = normalizeBridgeUrl(bridgeUrl);
+  const connectorToken = getConnectorAuthToken();
   return {
     bridgeUrl: normalized,
-    loaderSnippet: buildLoaderSnippet(normalized),
+    loaderSnippet: buildLoaderSnippet(normalized, connectorToken),
+    oneLineLoaderSnippet: buildOneLineLoaderSnippet(normalized, connectorToken),
   };
 }
 
@@ -670,7 +678,10 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
 
   if (body.action === "write-autoexec") {
     const bridgeUrl = typeof body.bridgeUrl === "string" ? body.bridgeUrl : DEFAULT_BRIDGE_URL;
-    const loaderSnippet = buildLoaderSnippet(normalizeBridgeUrl(bridgeUrl));
+    const loaderSnippet = buildLoaderSnippet(
+      normalizeBridgeUrl(bridgeUrl),
+      getConnectorAuthToken()
+    );
     const targetIds = Array.isArray(body.autoexecTargetIds)
       ? new Set(body.autoexecTargetIds.filter((id): id is string => typeof id === "string"))
       : null;

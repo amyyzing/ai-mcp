@@ -4,6 +4,8 @@ local BridgeHTTPURL = context.BridgeHTTPURL
 local BridgeWebSocketURL = context.BridgeWebSocketURL
 local BridgeAuthToken = context.BridgeAuthToken
 local BridgeRequestHeaders = context.BridgeRequestHeaders
+local Request = context.Request
+local HttpGet = context.HttpGet
 local WebSocketAvailable = context.WebSocketAvailable
 local WebSocketConnect = context.WebSocketConnect
 local GetRegistrationInfo = context.GetRegistrationInfo
@@ -119,11 +121,18 @@ local BaseBridge = {}; do
         local success, result = pcall(function()
             local response
             local thread = task.spawn(function()
-                local success, data = pcall(request, {
-                    Url = BridgeHTTPURL,
-                    Method = "GET",
-                    Headers = BridgeRequestHeaders()
-                })
+                local success, data
+                if Request then
+                    success, data = pcall(Request, {
+                        Url = BridgeHTTPURL,
+                        Method = "GET",
+                        Headers = BridgeRequestHeaders()
+                    })
+                else
+                    success, data = pcall(function()
+                        return { StatusCode = 200, Body = HttpGet(BridgeHTTPURL) }
+                    end)
+                end
 
                 if success then
                     response = data
@@ -275,6 +284,7 @@ local HTTPBridge = setmetatable({}, {__index = BaseBridge}); do
     HTTPBridge.__index = HTTPBridge
     
     function HTTPBridge.new()
+        assert(Request, "This executor exposes neither a working WebSocket nor a supported HTTP request API.")
         local self = setmetatable({}, HTTPBridge)
     
         --// Yield until the server is alive with exponential backoff \\--
@@ -299,7 +309,7 @@ local HTTPBridge = setmetatable({}, {__index = BaseBridge}); do
 
         --// Register with the server \\--
         local registered, registrationError = pcall(function()
-            local regResponse = request({
+            local regResponse = Request({
                 Url = BridgeHTTPURL .. "/register",
                 Method = "POST",
                 Headers = BridgeRequestHeaders({ ["Content-Type"] = "application/json" }),
@@ -328,7 +338,7 @@ local HTTPBridge = setmetatable({}, {__index = BaseBridge}); do
                     if self.ClientId then
                         pollUrl = pollUrl .. "?clientId=" .. self.ClientId
                     end
-                    local response = request({
+                    local response = Request({
                         Url = pollUrl,
                         Method = "GET",
                         Headers = BridgeRequestHeaders()
@@ -364,7 +374,7 @@ local HTTPBridge = setmetatable({}, {__index = BaseBridge}); do
                                 result.clientId = self.ClientId
 
                                 --// Send response back \\--
-                                request({
+                                Request({
                                     Url = BridgeHTTPURL .. "/respond?clientId=" .. HttpService:UrlEncode(self.ClientId),
                                     Method = "POST",
                                     Headers = BridgeRequestHeaders({

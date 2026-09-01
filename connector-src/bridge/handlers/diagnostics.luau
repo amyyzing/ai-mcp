@@ -68,7 +68,8 @@ local ScriptMappingPipeline = context.ScriptMappingPipeline
                 },
             },
             capabilities = {
-                request = type(request) == "function",
+                request = context.RequestAvailable == true,
+                requestProvider = context.HttpRequestProvider,
                 websocket = context.WebSocketAvailable == true,
                 loadstring = type(loadstring) == "function",
                 setthreadidentity = type(setthreadidentity) == "function",

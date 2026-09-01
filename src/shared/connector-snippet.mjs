@@ -28,8 +28,11 @@ function luaHttpBaseExpression(variableName) {
     end`;
 }
 
-function loaderBody() {
-  return `local HttpService = game:GetService("HttpService")
+function loaderBody(authToken) {
+  const credential = typeof authToken === "string" && authToken
+    ? `getgenv().MCPAuthToken = ${JSON.stringify(authToken)}\n`
+    : "";
+  return `${credential}local HttpService = game:GetService("HttpService")
 local attempts = 0
 
 while not getgenv().MCP_Loaded do
@@ -57,10 +60,27 @@ while not getgenv().MCP_Loaded do
 end`;
 }
 
-export function buildLoaderSnippet(bridgeUrl = DEFAULT_BRIDGE_URL) {
+export function buildLoaderSnippet(bridgeUrl = DEFAULT_BRIDGE_URL, authToken) {
   const normalized = normalizeBridgeUrl(bridgeUrl);
   if (normalized === DEFAULT_BRIDGE_URL) {
-    return loaderBody();
+    return loaderBody(authToken);
   }
-  return `getgenv().BridgeURL = "${normalized}"\n${loaderBody()}`;
+  return `getgenv().BridgeURL = "${normalized}"\n${loaderBody(authToken)}`;
+}
+
+export function buildOneLineLoaderSnippet(bridgeUrl = DEFAULT_BRIDGE_URL, authToken) {
+  const normalized = normalizeBridgeUrl(bridgeUrl);
+  const httpBase = /^(?:https?):\/\//i.test(normalized)
+    ? normalized
+    : /^wss:\/\//i.test(normalized)
+      ? `https://${normalized.slice(6)}`
+      : /^ws:\/\//i.test(normalized)
+        ? `http://${normalized.slice(5)}`
+        : `http://${normalized}`;
+  const bridgeLiteral = JSON.stringify(normalized);
+  const scriptLiteral = JSON.stringify(`${httpBase}/script.luau`);
+  const credential = typeof authToken === "string" && authToken
+    ? `getgenv().MCPAuthToken=${JSON.stringify(authToken)};`
+    : "";
+  return `${credential}getgenv().BridgeURL=${bridgeLiteral};local h=game:GetService("HttpService");local t=getgenv().MCPAuthToken or getgenv().BridgeAuthToken;local u=${scriptLiteral}..(type(t)=="string" and t~="" and ("?token="..h:UrlEncode(t)) or "");local s=game:HttpGet(u);local f,e=loadstring(s);assert(f,e or "The bridge returned an invalid connector script.");f()`;
 }

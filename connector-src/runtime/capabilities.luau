@@ -41,6 +41,8 @@ function CapabilityRegistry.new(options)
     options = options or {}
     return setmetatable({
         connectorVersion = tostring(options.ConnectorVersion or "1"),
+        RequestAvailable = options.RequestAvailable == true,
+        HttpRequestProvider = tostring(options.HttpRequestProvider or "unavailable"),
         WebSocketAvailable = options.WebSocketAvailable == true,
     }, CapabilityRegistry)
 end
@@ -48,7 +50,7 @@ end
 function CapabilityRegistry:Probe()
     local debugLibrary = type(debug) == "table" and debug or {}
     local descriptors = {
-        Descriptor("transport.request", IsFunction(request), "executor-api", "exact"),
+        Descriptor("transport.request", self.RequestAvailable, self.HttpRequestProvider, "exact"),
         Descriptor("transport.websocket", self.WebSocketAvailable, "executor-api", "exact"),
         Descriptor("script.loadstring", IsFunction(loadstring), "executor-api", "exact"),
         Descriptor("script.decompile", IsFunction(decompile), "executor-api", "best-effort"),

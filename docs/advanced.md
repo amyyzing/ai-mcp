@@ -38,9 +38,15 @@ The core listens on `127.0.0.1` by default. For a LAN or VPN bridge, set these v
 ```text
 ROBLOX_MCP_HOST=0.0.0.0
 ROBLOX_MCP_AUTH_TOKEN=<a-long-random-pairing-token>
+ROBLOX_MCP_CONNECTOR_TOKEN=<a-different-long-random-connector-token>
 ```
 
-Use the same value as `getgenv().MCPAuthToken` in Roblox. If a non-loopback host is enabled without an explicit token, the core generates a token for that run and prints it to stderr; an explicit token is more reliable across restarts.
+Use `ROBLOX_MCP_CONNECTOR_TOKEN` as `getgenv().MCPAuthToken` in Roblox. Keep
+`ROBLOX_MCP_AUTH_TOKEN` for MCP adapters and agents only. If the connector token
+is omitted, Roblox falls back to the agent token for backward compatibility. If
+a non-loopback host is enabled without an explicit token, the core generates a
+token for that run and prints it to stderr; explicit tokens are more reliable
+across restarts.
 
 Plain `http://` and `ws://` provide authentication but no confidentiality or transport integrity. On an ordinary LAN, the pairing token, game data, script source, and executed commands can be observed or modified by a network attacker. Use a trusted isolated network only as a last resort; prefer Tailscale/a VPN, an SSH tunnel, or an HTTPS reverse proxy. The connector accepts `https://...` in `BridgeURL` and automatically uses `wss://` for WebSocket transport.
 
@@ -113,7 +119,11 @@ The worker uses `luauvmp luraph-full --no-lua-expert`, caps source and result si
 
 **This server allows arbitrary code execution.** Any connected AI client can run Lua code in your Roblox session, take screenshots, and read client data.
 
-The server binds to loopback unless `ROBLOX_MCP_HOST` is explicitly set. Non-loopback clients must authenticate, and setting `ROBLOX_MCP_AUTH_TOKEN` also protects local bridge endpoints. Browser requests are restricted to the bridge's own origin.
+The server binds to loopback unless `ROBLOX_MCP_HOST` is explicitly set.
+Non-loopback clients must authenticate. `ROBLOX_MCP_AUTH_TOKEN` protects MCP
+agents, while optional `ROBLOX_MCP_CONNECTOR_TOKEN` limits Roblox loaders to
+connector routes. Setting either also protects its corresponding local bridge
+endpoints. Browser requests are restricted to the bridge's own origin.
 
 **Never expose port `16384` directly to the internet.** Authentication is defense in depth for cross-machine setups:
 
