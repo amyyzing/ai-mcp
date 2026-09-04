@@ -73,6 +73,10 @@ test("a versioned core resolves installation artifacts from the stable server ro
     env: {
       ...process.env,
       ROBLOX_MCP_PORT: String(port),
+      ROBLOX_MCP_HOST: "127.0.0.1",
+      ROBLOX_MCP_AUTH_TOKEN: "",
+      ROBLOX_MCP_CONNECTOR_TOKEN: "",
+      RAILWAY_PUBLIC_DOMAIN: "",
       ROBLOX_MCP_SERVER_ROOT: serverRoot,
     },
     stdio: "ignore",
@@ -84,6 +88,10 @@ test("a versioned core resolves installation artifacts from the stable server ro
   const baseUrl = `http://127.0.0.1:${port}`;
   await waitForCore(baseUrl);
 
+  const health = await fetch(`${baseUrl}/health`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { status: "ready" });
+
   const connector = await fetch(`${baseUrl}/script.luau`);
   assert.equal(connector.status, 200);
   assert.equal(
@@ -92,10 +100,11 @@ test("a versioned core resolves installation artifacts from the stable server ro
   );
 
   const hostedLoader = await fetch(`${baseUrl}/loader.luau`);
-  assert.equal(hostedLoader.status, 200);
+  assert.equal(hostedLoader.status, 503);
+  assert.equal(hostedLoader.headers.get("cache-control"), "no-store");
   const hostedLoaderSource = await hostedLoader.text();
-  assert.match(hostedLoaderSource, /getgenv\(\)\.MCPAuthToken = /);
-  assert.match(hostedLoaderSource, new RegExp(`BridgeURL = "http:\\/\\/127\\.0\\.0\\.1:${port}"`));
+  assert.match(hostedLoaderSource, /configure ROBLOX_MCP_CONNECTOR_TOKEN/);
+  assert.doesNotMatch(hostedLoaderSource, /getgenv\(\)\.MCPAuthToken/);
   assert.match(hostedLoaderSource, /\/script\.luau/);
 
   const session = await fetch(`${baseUrl}/api/admin-session`);

@@ -1,6 +1,11 @@
 .git
 .github
 .codex
+.env
+.env.*
+.roblox-mcp-releases
+.roblox-mcp-current.json
+.roblox-mcp-update-*
 node_modules
 dist
 research

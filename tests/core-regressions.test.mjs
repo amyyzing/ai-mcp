@@ -890,7 +890,7 @@ test("set-active-client selection is isolated per MCP session", async () => {
     assert.equal(secondList.structuredContent?.selectedClientId, secondId);
 
     const listedTools = await firstSession.client.listTools();
-    assert.equal(listedTools.tools.length, 46);
+    assert.equal(listedTools.tools.length, 53);
     for (const name of [
       "runtime-status",
       "script-index-status",
@@ -920,6 +920,13 @@ test("set-active-client selection is isolated per MCP session", async () => {
       "property-access",
       "callback-inspect",
       "runtime-actors",
+      "dex-selection",
+      "dex-reveal",
+      "dex-inspect",
+      "dex-query",
+      "dex-snapshot",
+      "dex-references",
+      "dex-watch",
     ]) {
       assert.ok(listedTools.tools.some((tool) => tool.name === name), `missing tool ${name}`);
     }

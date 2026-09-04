@@ -98,9 +98,20 @@ local function ParsePath(path)
     return root, segments
 end
 
-local function ResolveSegment(current, segment)
+local function ResolveSegment(current, segment, uniqueBudget)
     local child = current:FindFirstChild(segment)
-    if child then return child end
+    if child then
+        if uniqueBudget then
+            local matches = 0
+            for _, candidate in current:GetChildren() do
+                uniqueBudget.remaining -= 1
+                assert(uniqueBudget.remaining >= 0 and os.clock() < uniqueBudget.deadline, "Path uniqueness check exceeded its budget. Use a Handle returned by dex-query or dex-selection.")
+                if candidate.Name == segment then matches += 1 end
+                assert(matches <= 1, "Ambiguous duplicate-name path segment. Use a Handle returned by dex-query or dex-selection.")
+            end
+        end
+        return child
+    end
 
     -- Instance-valued properties (for example Players.LocalPlayer) are safe
     -- to read and preserve useful canonical paths without evaluating code.
@@ -111,7 +122,7 @@ local function ResolveSegment(current, segment)
     return nil
 end
 
-function InstancePath.Resolve(target)
+function InstancePath.Resolve(target, requireUnique)
     assert(type(target) == "table", "Instance target must be an object.")
 
     local root
@@ -127,9 +138,10 @@ function InstancePath.Resolve(target)
     end
 
     local current = root
+    local uniqueBudget = requireUnique and { remaining = 10000, deadline = os.clock() + 0.02 } or nil
     for index, segment in ipairs(segments) do
         assert(type(segment) == "string" and #segment <= 200, "Invalid path segment at index " .. tostring(index) .. ".")
-        local nextInstance = ResolveSegment(current, segment)
+        local nextInstance = ResolveSegment(current, segment, uniqueBudget)
         assert(nextInstance, "Instance path was not found at segment " .. tostring(index) .. " (" .. segment .. ").")
         current = nextInstance
     end

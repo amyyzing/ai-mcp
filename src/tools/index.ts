@@ -31,6 +31,7 @@ import registerScriptIndex from "./impl/advanced/script-index.js";
 import registerListScripts from "./impl/advanced/list-scripts.js";
 import registerDevirtualizeLuraph from "./impl/advanced/devirtualize-luraph.js";
 import registerRuntimeTools from "./impl/runtime/runtime-tools.js";
+import registerDexTools from "./impl/dex/dex-tools.js";
 
 export function registerAllTools(server: McpServer, routing: ToolRoutingContext): void {
   registerSetActiveClient(server, routing);
@@ -60,6 +61,7 @@ export function registerAllTools(server: McpServer, routing: ToolRoutingContext)
   registerListScripts(server, routing);
   registerDevirtualizeLuraph(server, routing);
   registerRuntimeTools(server, routing);
+  registerDexTools(server, routing);
 
   registerTypeTextBox(server, routing);
   registerClickButton(server, routing);

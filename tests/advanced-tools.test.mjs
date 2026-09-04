@@ -312,7 +312,7 @@ test("strict connector paths replace loadstring in read and UI handlers", async 
     new URL("../connector-src/bridge/handlers/instances.luau", import.meta.url),
     "utf8"
   );
-  assert.match(instances, /MAX_SUMMARY_VISITED = 20000/);
+  assert.match(instances, /MAX_SUMMARY_VISITED = 5000/);
   assert.match(instances, /MAX_SELECTOR_MATCHES = 1000/);
   assert.match(instances, /Another instance selector search is already running/);
   assert.match(instances, /Marketplace metadata unavailable/);

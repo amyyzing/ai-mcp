@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
 import { Readable } from "node:stream";
@@ -58,6 +59,28 @@ function request({
       ...(token ? { [BRIDGE_AUTH_HEADER]: token } : {}),
     },
   };
+}
+
+function runAuthFixture(source, environment = {}) {
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+    timeout: 10000,
+    env: {
+      ...process.env,
+      ROBLOX_MCP_AUTH_TOKEN: "agent-only-test-token",
+      ROBLOX_MCP_CONNECTOR_TOKEN: "connector-only-test-token",
+      ROBLOX_MCP_HOST: "127.0.0.1",
+      ROBLOX_MCP_ALLOWED_HOSTS: "",
+      ROBLOX_MCP_PUBLIC_LOADER: "",
+      RAILWAY_PUBLIC_DOMAIN: "",
+      RAILWAY_ENVIRONMENT_ID: "",
+      RAILWAY_PROJECT_ID: "",
+      ...environment,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  return JSON.parse(result.stdout);
 }
 
 test("loader snippets preserve an explicitly configured HTTPS bridge", () => {
@@ -148,6 +171,149 @@ test("configured connector and agent credentials cannot substitute for each othe
     if (previousConnector === undefined) delete process.env.ROBLOX_MCP_CONNECTOR_TOKEN;
     else process.env.ROBLOX_MCP_CONNECTOR_TOKEN = previousConnector;
   }
+});
+
+test("WebSocket upgrades cannot turn agent routes into connector access", () => {
+  const result = runAuthFixture(`
+    import assert from "node:assert/strict";
+    import { isAuthorizedBridgeRequest } from "./dist/http/bridge-auth.js";
+    const agent = "agent-only-test-token";
+    const connector = "connector-only-test-token";
+    function allowed(path, token, upgrade, query = false, bearer = false) {
+      const url = new URL(path, "http://bridge.example");
+      if (query) url.searchParams.set("token", token);
+      const headers = {host: "bridge.example"};
+      if (upgrade) headers.upgrade = "WebSocket";
+      if (!query && token) {
+        if (bearer) headers.authorization = "Bearer " + token;
+        else headers["x-roblox-mcp-token"] = token;
+      }
+      return isAuthorizedBridgeRequest({
+        method: "GET", url: url.pathname + url.search,
+        socket: {remoteAddress: "192.0.2.1"}, headers,
+      }, url);
+    }
+    for (const path of ["/mcp", "/mcp-relay", "/api/tool", "/api/status", "/api/admin-session"]) {
+      for (const upgrade of [false, true]) {
+        assert.equal(allowed(path, connector, upgrade), false, path + " connector header");
+        assert.equal(allowed(path, agent, upgrade), true, path + " agent header");
+        assert.equal(allowed(path, agent, upgrade, false, true), true, path + " agent bearer");
+        assert.equal(allowed(path, agent, upgrade, true), false, path + " agent query");
+        assert.equal(allowed(path, connector, upgrade, true), false, path + " connector query");
+      }
+    }
+    for (const path of ["/", "/connector", "/legacy-socket", "/register"]) {
+      assert.equal(allowed(path, connector, true), true, path + " fallback header");
+      assert.equal(allowed(path, connector, true, true), true, path + " fallback query");
+      assert.equal(allowed(path, agent, true), false, path + " wrong fallback scope");
+      assert.equal(allowed(path, connector, false, true), false, path + " HTTP query");
+    }
+    assert.equal(allowed("/script.luau", connector, false, true), true);
+    assert.equal(allowed("/script.luau", agent, false, true), false);
+    console.log(JSON.stringify({ok: true}));
+  `);
+  assert.equal(result.ok, true);
+});
+
+test("hosted loader never publishes an absent or shared agent credential", () => {
+  const fixture = `
+    import { GET } from "./dist/http/routes/loader.luau.js";
+    let status, headers, body;
+    GET({headers: {host: "127.0.0.1:16384"}}, {
+      writeHead(value, values) {status = value; headers = values;},
+      end(value) {body = value;},
+    });
+    console.log(JSON.stringify({
+      status,
+      cacheControl: headers["Cache-Control"],
+      hasConnector: body.includes("connector-only-test-token"),
+      hasAgent: body.includes("agent-only-test-token"),
+      executable: body.includes("getgenv().MCPAuthToken"),
+      guidance: body.includes("ROBLOX_MCP_CONNECTOR_TOKEN"),
+    }));
+  `;
+  for (const environment of [
+    { ROBLOX_MCP_AUTH_TOKEN: "", ROBLOX_MCP_CONNECTOR_TOKEN: "" },
+    { ROBLOX_MCP_CONNECTOR_TOKEN: "" },
+    { ROBLOX_MCP_CONNECTOR_TOKEN: "agent-only-test-token" },
+  ]) {
+    const result = runAuthFixture(fixture, environment);
+    assert.equal(result.status, 503);
+    assert.equal(result.cacheControl, "no-store");
+    assert.equal(result.hasAgent, false);
+    assert.equal(result.hasConnector, false);
+    assert.equal(result.executable, false);
+    assert.equal(result.guidance, true);
+  }
+  const distinct = runAuthFixture(fixture);
+  assert.equal(distinct.status, 200);
+  assert.equal(distinct.cacheControl, "no-store");
+  assert.equal(distinct.hasConnector, true);
+  assert.equal(distinct.hasAgent, false);
+  assert.equal(distinct.executable, true);
+  const disabled = runAuthFixture(fixture, { ROBLOX_MCP_PUBLIC_LOADER: "0" });
+  assert.equal(disabled.status, 404);
+  assert.equal(disabled.cacheControl, "no-store");
+  assert.equal(disabled.hasConnector, false);
+  assert.equal(disabled.hasAgent, false);
+});
+
+test("Railway public host allowlisting rejects URL-shaped or malformed configuration", () => {
+  const fixture = `
+    import { isAllowedRequestOrigin } from "./dist/http/bridge-auth.js";
+    const check = (host, origin) => isAllowedRequestOrigin({
+      method: "GET", url: "/mcp", socket: {remoteAddress: "192.0.2.1"},
+      headers: {host, ...(origin ? {origin} : {})},
+    });
+    console.log(JSON.stringify({
+      publicHost: check("mcp-test.up.railway.app"),
+      differentHost: check("other.up.railway.app"),
+      crossOrigin: check("mcp-test.up.railway.app", "https://other.up.railway.app"),
+      loopback: check("127.0.0.1:16384"),
+    }));
+  `;
+  const valid = runAuthFixture(fixture, { RAILWAY_PUBLIC_DOMAIN: " MCP-TEST.up.railway.app. " });
+  assert.equal(valid.publicHost, true);
+  assert.equal(valid.differentHost, false);
+  assert.equal(valid.crossOrigin, false);
+  assert.equal(valid.loopback, true);
+  for (const domain of [
+    "https://mcp-test.up.railway.app",
+    "mcp-test.up.railway.app:443",
+    "mcp-test.up.railway.app/path",
+    "user@mcp-test.up.railway.app",
+    "-mcp-test.up.railway.app",
+    "[mcp-test.up.railway.app]",
+  ]) {
+    assert.equal(runAuthFixture(fixture, { RAILWAY_PUBLIC_DOMAIN: domain }).publicHost, false, domain);
+  }
+});
+
+test("Railway healthcheck hostname is allowed only for the platform GET readiness probe", () => {
+  const fixture = `
+    import { isAllowedRequestOrigin } from "./dist/http/bridge-auth.js";
+    const check = (url, method = "GET", headers = {}) => isAllowedRequestOrigin({
+      method, url, socket: {remoteAddress: "192.0.2.1"},
+      headers: {host: "healthcheck.railway.app", ...headers},
+    });
+    console.log(JSON.stringify({
+      health: check("/health"),
+      post: check("/health", "POST"),
+      agent: check("/mcp"),
+      api: check("/api/status"),
+      loader: check("/loader.luau"),
+      websocket: check("/health", "GET", {upgrade: "websocket"}),
+      crossSite: check("/health", "GET", {"sec-fetch-site": "cross-site"}),
+    }));
+  `;
+  for (const marker of ["RAILWAY_ENVIRONMENT_ID", "RAILWAY_PROJECT_ID"]) {
+    const hosted = runAuthFixture(fixture, { [marker]: "test-environment" });
+    assert.equal(hosted.health, true);
+    for (const key of ["post", "agent", "api", "loader", "websocket", "crossSite"]) {
+      assert.equal(hosted[key], false, key);
+    }
+  }
+  assert.equal(runAuthFixture(fixture).health, false, "non-Railway processes do not trust the platform hostname");
 });
 
 test("bridge auth preserves local clients and pairs remote clients", () => {

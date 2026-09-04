@@ -29,9 +29,16 @@ function readByteLimit(
     : fallback;
 }
 
-export const WS_PORT = readPort(process.env.ROBLOX_MCP_PORT, 16384);
+const isRailwayDeployment = Boolean(
+  process.env.RAILWAY_ENVIRONMENT_ID?.trim() ||
+    process.env.RAILWAY_PROJECT_ID?.trim()
+);
+const defaultPort = isRailwayDeployment ? readPort(process.env.PORT, 16384) : 16384;
+
+export const WS_PORT = readPort(process.env.ROBLOX_MCP_PORT, defaultPort);
 export const BRIDGE_HOST =
-  process.env.ROBLOX_MCP_HOST?.trim() || "127.0.0.1";
+  process.env.ROBLOX_MCP_HOST?.trim() ||
+  (isRailwayDeployment ? "0.0.0.0" : "127.0.0.1");
 
 export const HTTP_BODY_LIMIT_BYTES = readByteLimit(
   process.env.ROBLOX_MCP_HTTP_BODY_LIMIT_BYTES,

@@ -28,6 +28,7 @@ import {
 import { clientIdSchema } from "../../schemas.js";
 
 export interface RuntimeStatusServerSnapshot {
+  hostCapabilities?: ReturnType<typeof hostInspectionCapabilities>;
   role: "primary" | "secondary";
   selectedClientId?: string;
   activeClientCount?: number;
@@ -52,6 +53,17 @@ export interface RuntimeStatusServerSnapshot {
   };
   decompilerHealth?: ReturnType<typeof getDecompilerHealthSnapshot>;
   relayLimitations?: string[];
+}
+
+export function hostInspectionCapabilities(platform: string = process.platform, role = getInstanceRole()) {
+  return {
+    platform,
+    screenshotLocation: role === "secondary" ? "primary-host" : "this-host",
+    screenshotBackend: role === "secondary" ? "primary-host-dependent" : platform === "win32" ? "windows" : "unavailable",
+    screenshotAvailable: role === "secondary" ? null : platform === "win32",
+    alternatives: ["dex-query", "dex-inspect", "dex-selection"],
+    note: "OS screenshots run on the primary MCP host, not on the remote Roblox device. Dex metadata is not a pixel-level screenshot.",
+  };
 }
 
 export function formatRuntimeStatus(
@@ -134,6 +146,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
           })
         : undefined;
       const snapshot: RuntimeStatusServerSnapshot = {
+        hostCapabilities: hostInspectionCapabilities(),
         role: getInstanceRole(),
         selectedClientId: responseClientId,
         activeClientCount:

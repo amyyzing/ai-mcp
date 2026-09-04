@@ -1,13 +1,17 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { getConnectorAuthToken } from "../bridge-auth.js";
+import {
+  getConnectorAuthToken,
+  getRailwayPublicDomain,
+  hasDistinctConnectorAuthToken,
+} from "../bridge-auth.js";
 import {
   DEFAULT_BRIDGE_URL,
   buildLoaderSnippet,
 } from "../../shared/connector-snippet.mjs";
 
 function bridgeUrlForRequest(req: IncomingMessage): string {
-  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  const railwayDomain = getRailwayPublicDomain();
   if (railwayDomain) return `https://${railwayDomain}`;
 
   const host = req.headers.host;
@@ -27,6 +31,25 @@ function bridgeUrlForRequest(req: IncomingMessage): string {
 }
 
 export function GET(req: IncomingMessage, res: ServerResponse): void {
+  if (process.env.ROBLOX_MCP_PUBLIC_LOADER?.trim() === "0") {
+    res.writeHead(404, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end("Hosted loader disabled.");
+    return;
+  }
+  if (!hasDistinctConnectorAuthToken()) {
+    res.writeHead(503, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      "Hosted loader unavailable: configure ROBLOX_MCP_CONNECTOR_TOKEN with a value " +
+      "different from ROBLOX_MCP_AUTH_TOKEN. The authenticated /script.luau loader remains available."
+    );
+    return;
+  }
   const source = buildLoaderSnippet(bridgeUrlForRequest(req), getConnectorAuthToken());
   res.writeHead(200, {
     "Content-Type": "text/plain; charset=utf-8",

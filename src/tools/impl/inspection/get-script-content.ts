@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { clientStampPrefix, resolveToolClientId, sendAndWait, toolTextResponse, type ToolRoutingContext } from "../../factory.js";
+import { clientStampPrefix, describeResponse, resolveToolClientId, sendAndWait, toolTextResponse, type ToolRoutingContext } from "../../factory.js";
 import { isSecondaryRelay, relayToolToApi } from "../../factory.js";
 import { clientIdSchema, maxOutputCharsSchema } from "../../schemas.js";
 import { fetchScriptSearchIndex, type ScriptSearchDocument } from "./script-sources.js";
@@ -163,7 +163,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
         maxOutputChars,
         stampClient: true,
         truncationHint: "Rerun get-script-content with startLine/endLine or a smaller maxLines value.",
-        failureMessage: () => "Failed to get script content.",
+        failureMessage: (response) => "Failed to get script content: " + describeResponse(response),
       });
     }
   );

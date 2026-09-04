@@ -31,6 +31,24 @@ const explicitlyAllowedHosts = new Set(
     .filter(Boolean)
 );
 
+// Railway supplies a bare public hostname, not a URL or a Host header.
+// Reject malformed values rather than broadening the origin allowlist.
+const railwayDomainCandidate = (process.env.RAILWAY_PUBLIC_DOMAIN || "")
+  .trim().toLowerCase().replace(/\.$/, "");
+const railwayDomain =
+  railwayDomainCandidate.length <= 253 &&
+  railwayDomainCandidate.includes(".") &&
+  net.isIP(railwayDomainCandidate) === 0 &&
+  railwayDomainCandidate.split(".").every((label) =>
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)
+  )
+    ? railwayDomainCandidate
+    : null;
+if (railwayDomain) explicitlyAllowedHosts.add(railwayDomain);
+const isRailwayDeployment = Boolean(
+  process.env.RAILWAY_ENVIRONMENT_ID?.trim() || process.env.RAILWAY_PROJECT_ID?.trim()
+);
+
 function normalizeHostname(value: string): string {
   return value.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
 }
@@ -48,6 +66,20 @@ function hostIsAllowed(hostname: string): boolean {
   return normalized === configuredHost;
 }
 
+function isRailwayHealthCheck(req: IncomingMessage, hostname: string): boolean {
+  if (
+    !isRailwayDeployment ||
+    normalizeHostname(hostname) !== "healthcheck.railway.app" ||
+    req.method !== "GET" ||
+    req.headers.upgrade !== undefined
+  ) return false;
+  try {
+    return new URL(req.url || "/", "http://localhost").pathname === "/health";
+  } catch {
+    return false;
+  }
+}
+
 function tokensMatch(received: string, expectedToken: string): boolean {
   const expected = Buffer.from(expectedToken);
   const actual = Buffer.from(received);
@@ -57,11 +89,26 @@ function tokensMatch(received: string, expectedToken: string): boolean {
   );
 }
 
-function isConnectorRequest(req: IncomingMessage, url: URL): boolean {
-  const isWebSocket =
+function isAgentPath(pathname: string): boolean {
+  return (
+    pathname === "/mcp" ||
+    pathname === "/mcp-relay" ||
+    pathname === "/api" ||
+    pathname.startsWith("/api/")
+  );
+}
+
+function isConnectorWebSocketRequest(req: IncomingMessage, url: URL): boolean {
+  // dispatchWs sends all non-agent paths to the connector fallback. An
+  // Upgrade header must never reclassify MCP/relay/API access as connector access.
+  return !isAgentPath(url.pathname) &&
     typeof req.headers.upgrade === "string" &&
     req.headers.upgrade.toLowerCase() === "websocket";
-  return isWebSocket || connectorPaths.has(url.pathname);
+}
+
+function isConnectorRequest(req: IncomingMessage, url: URL): boolean {
+  if (isAgentPath(url.pathname)) return false;
+  return connectorPaths.has(url.pathname) || isConnectorWebSocketRequest(req, url);
 }
 
 function bearerToken(req: IncomingMessage): string | null {
@@ -80,10 +127,7 @@ function requestToken(req: IncomingMessage, url: URL): string | null {
   // Query credentials are supported only where Roblox's loader/WebSocket APIs
   // cannot reliably attach headers. Keeping them off ordinary API URLs avoids
   // leaking bridge credentials through logs, history, and copied links.
-  const isWebSocket =
-    typeof req.headers.upgrade === "string" &&
-    req.headers.upgrade.toLowerCase() === "websocket";
-  return url.pathname === "/script.luau" || isWebSocket
+  return url.pathname === "/script.luau" || isConnectorWebSocketRequest(req, url)
     ? url.searchParams.get("token")
     : null;
 }
@@ -102,6 +146,15 @@ export function hasConfiguredBridgeAuthToken(): boolean {
 
 export function hasConfiguredConnectorAuthToken(): boolean {
   return configuredConnectorToken !== null;
+}
+
+export function hasDistinctConnectorAuthToken(): boolean {
+  return configuredConnectorToken !== null &&
+    !tokensMatch(configuredConnectorToken, bridgeToken);
+}
+
+export function getRailwayPublicDomain(): string | null {
+  return railwayDomain;
 }
 
 export function bridgeAuthHeaders(): Record<string, string> {
@@ -123,7 +176,7 @@ export function isAllowedRequestOrigin(req: IncomingMessage): boolean {
   } catch {
     return false;
   }
-  if (!hostIsAllowed(requestedHost)) return false;
+  if (!hostIsAllowed(requestedHost) && !isRailwayHealthCheck(req, requestedHost)) return false;
 
   const origin = req.headers.origin;
   if (origin === undefined) return true;

@@ -28,6 +28,7 @@ Use it to see connected Roblox clients, inspect scripts, run tools, view server 
 - **Script Inspection** — Decompile scripts and search across all sources.
 - **Controlled Script Indexing** — Start, stop, inspect, or fully resync source mapping on demand; expensive initial indexing is opt-in.
 - **Instance Search** — CSS-like selectors and hierarchy trees.
+- **Dex Inspection & UI Handoff** — Class-aware batched inspection, resumable queries, retained snapshot comparisons, incoming instance references, change watchers, and selection/reveal integration with compatible Dex. See the [Dex workflow guide](docs/dex.md).
 - **Runtime Diagnostics** — Inspect transport latency, executor capabilities, decompiler health, and live mapping state.
 - **Runtime Object Debugger** — Keep generation-scoped handles to GC objects, closures, tables, threads, Instances, callbacks, signals, and connections; inspect or manipulate them without flattening everything into text.
 - **GC Snapshots and References** — Build reusable GC indexes, query and diff snapshots, compute statistics, and follow table/upvalue/prototype/metatable reference edges.
@@ -37,6 +38,8 @@ Use it to see connected Roblox clients, inspect scripts, run tools, view server 
 - **Unified Input** — Keyboard, text, mouse, scroll, prompt, click-detector, and touch interaction.
 - **Screenshot** — Capture Roblox window screenshots (Windows only).
 - **Multi-Client** — Connect multiple Roblox clients at once.
+
+For hosted configuration, credential separation, readiness checks and release verification, see [Deployment and access control](docs/deployment.md).
 
 ## Prerequisites
 

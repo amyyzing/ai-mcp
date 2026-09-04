@@ -6,7 +6,6 @@ import {
   WS_PORT,
 } from "../../../config.js";
 import {
-  getBridgeAuthToken,
   hasConfiguredBridgeAuthToken,
   hasConfiguredConnectorAuthToken,
   isAllowedRequestOrigin,
@@ -14,6 +13,7 @@ import {
 } from "../../../http/bridge-auth.js";
 import { isLoopbackAddress } from "../../../http/local-admin.js";
 import { dispatchHttp, dispatchWs, loadRoutes } from "../../../http/router.js";
+import { setPrimaryReady } from "../../../http/routes/health.js";
 import {
   resetPrimaryState,
   setInstanceRole,
@@ -29,6 +29,7 @@ const MAX_CONNECTIONS = Math.min(
 );
 
 export async function startAsPrimary(): Promise<void> {
+  setPrimaryReady(false);
   await loadRoutes();
 
   return new Promise((resolve, reject) => {
@@ -45,8 +46,10 @@ export async function startAsPrimary(): Promise<void> {
     httpServer.maxRequestsPerSocket = 1_000;
     httpServer.maxHeadersCount = 100;
     httpServer.maxConnections = MAX_CONNECTIONS;
+    httpServer.on("close", () => setPrimaryReady(false));
 
     httpServer.on("error", (err: NodeJS.ErrnoException) => {
+      setPrimaryReady(false);
       if (err.code === "EADDRINUSE") {
         reject(err);
       } else {
@@ -68,7 +71,9 @@ export async function startAsPrimary(): Promise<void> {
               : "[Security] Roblox connectors currently share the agent token; set ROBLOX_MCP_CONNECTOR_TOKEN to isolate them."
           );
         } else {
-          console.error(`[Security] Remote bridge pairing token for this run: ${getBridgeAuthToken()}`);
+          console.error(
+            "[Security] Remote access uses an unprinted per-run pairing token. Configure ROBLOX_MCP_AUTH_TOKEN and a separate ROBLOX_MCP_CONNECTOR_TOKEN for persistent client setup."
+          );
         }
       }
 
@@ -110,6 +115,7 @@ export async function startAsPrimary(): Promise<void> {
       heartbeat.unref();
       wss.on("close", () => clearInterval(heartbeat));
 
+      setPrimaryReady(true);
       resolve();
     });
   });

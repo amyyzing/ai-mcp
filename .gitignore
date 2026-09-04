@@ -1,6 +1,11 @@
 # Build artifacts
 dist/*
 
+# Local deployment credentials stay outside source control.
+.env
+.env.*
+!.env.example
+
 # node modules
 node_modules/*
 __pycache__/

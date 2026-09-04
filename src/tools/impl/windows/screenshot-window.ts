@@ -83,7 +83,7 @@ export default function register(server: McpServer): void {
               type: "text" as const,
               text:
                 "Error: The screenshot-window tool is only available on Windows. The current platform is: " +
-                process.platform,
+                process.platform + ". Capture runs on the primary MCP host, not the Roblox device. Use dex-query on PlayerGui and dex-inspect for layout/text/image metadata, or connect a Windows capture host.",
             },
           ],
           isError: true,

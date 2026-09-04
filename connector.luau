@@ -533,43 +533,55 @@ end
 return f,h
 end
 
-local function ResolveSegment(e,f)
-local g=e:FindFirstChild(f)
-if g then return g end
+local function ResolveSegment(e,f,g)
+local h=e:FindFirstChild(f)
+if h then
+if g then
+local i=0
+for j,k in e:GetChildren()do
+g.remaining-=1
+assert(g.remaining>=0 and os.clock()<g.deadline,"Path uniqueness check exceeded its budget. Use a Handle returned by dex-query or dex-selection.")
+if k.Name==f then i+=1 end
+assert(i<=1,"Ambiguous duplicate-name path segment. Use a Handle returned by dex-query or dex-selection.")
+end
+end
+return h
+end
 
 
 
-local h,i=pcall(function()
+local i,j=pcall(function()
 return e[f]
 end)
-if h and typeof(i)=="Instance"then return i end
+if i and typeof(j)=="Instance"then return j end
 return nil
 end
 
-function b.Resolve(e)
+function b.Resolve(e,f)
 assert(type(e)=="table","Instance target must be an object.")
 
-local f
 local g
+local h
 if e.path~=nil then
 assert(e.pathSegments==nil,"Provide path or pathSegments, not both.")
-f,g=ParsePath(e.path)
+g,h=ParsePath(e.path)
 else
 assert(type(e.pathSegments)=="table","Provide path or pathSegments.")
-f=e.root=="workspace"and workspace or game
-g=e.pathSegments
-assert(#g>0 and#g<=c,"pathSegments must contain 1-100 names.")
+g=e.root=="workspace"and workspace or game
+h=e.pathSegments
+assert(#h>0 and#h<=c,"pathSegments must contain 1-100 names.")
 end
 
-local h=f
-for i,j in ipairs(g)do
-assert(type(j)=="string"and#j<=200,"Invalid path segment at index "..tostring(i)..".")
-local k=ResolveSegment(h,j)
-assert(k,"Instance path was not found at segment "..tostring(i).." ("..j..").")
-h=k
+local i=g
+local j=f and{remaining=10000,deadline=os.clock()+0.02}or nil
+for k,l in ipairs(h)do
+assert(type(l)=="string"and#l<=200,"Invalid path segment at index "..tostring(k)..".")
+local m=ResolveSegment(i,l,j)
+assert(m,"Instance path was not found at segment "..tostring(k).." ("..l..").")
+i=m
 end
 
-return h
+return i
 end
 
 local function EncodeSegment(e)
@@ -4654,32 +4666,43 @@ local n=h.summaryOnly==true
 local o=300
 local p=o
 local q=false
+local r=0
+local s=false
+local t=os.clock()+0.02
+local function visit()
+if r>=5000 or os.clock()>=t then
+s=true
+return false
+end
+r+=1
+return true
+end
 
 if n then
-local r={}
-local s=0
-local t=0
-local u=false
-local v=20000
+local u={}
+local v=0
+local w=0
+local x=false
+local y=5000
 
-local function walk(w,x)
-if x>j or u then
+local function walk(z,A)
+if A>j or x then
 return
 end
 
-for y,z in w:GetChildren()do
-if s>=v then
-u=true
+for B,C in z:GetChildren()do
+if v>=y or not visit()then
+x=true
 return
 end
-s+=1
-if not m or z:IsA(l)then
-t+=1
-r[z.ClassName]=(r[z.ClassName]or 0)+1
+v+=1
+if not m or C:IsA(l)then
+w+=1
+u[C.ClassName]=(u[C.ClassName]or 0)+1
 end
-if x<j then
-walk(z,x+1)
-if u then return end
+if A<j then
+walk(C,A+1)
+if x then return end
 end
 end
 end
@@ -4694,39 +4717,45 @@ ChildCount=#i:GetChildren(),
 },
 MaxDepth=j,
 ClassFilter=if m then l else nil,
-VisitedDescendants=s,
-MatchedDescendants=t,
-ClassCounts=r,
-TraversalLimited=u,
-TraversalLimit=v,
+VisitedDescendants=v,
+MatchedDescendants=w,
+ClassCounts=u,
+TraversalLimited=x,
+TraversalLimit=y,
+ContinuationHint=x and"Use dex-query for resumable, budgeted traversal."or nil,
 }
 end
 
-local function buildTree(r,s)
-if s>j then
+local function buildTree(u,v)
+if v>j then
 return nil
 end
 
-local t=r:GetChildren()
-local u={}
-local v=0
-local w=#t
+local w=u:GetChildren()
+local x={}
+local y=0
+local z=#w
 
-for x,y in t do
-if v>=k then break end
+if v>=j then
+return{Name=u.Name,ClassName=u.ClassName,ChildCount=z,Children={},DepthLimited=z>0}
+end
+
+for A,B in w do
+if y>=k then break end
+if not visit()then break end
 if p<=0 then
 q=true
 break
 end
 
-if m and not y:IsA(l)then
+if m and not B:IsA(l)then
 
 
-if s<j then
-local z=buildTree(y,s+1)
-if z and z.Children and#z.Children>0 then
-table.insert(u,z)
-v+=1
+if v<j then
+local C=buildTree(B,v+1)
+if C and C.Children and#C.Children>0 then
+table.insert(x,C)
+y+=1
 end
 end
 continue
@@ -4734,37 +4763,43 @@ end
 
 p-=1
 
-local z={
-Name=y.Name,
-ClassName=y.ClassName,
-ChildCount=#y:GetChildren()
+local C={
+Name=B.Name,
+ClassName=B.ClassName,
+ChildCount=#B:GetChildren()
 }
 
-if s<j and z.ChildCount>0 then
-local A=buildTree(y,s+1)
-if A then
-z.Children=A.Children
+if v<j and C.ChildCount>0 then
+local D=buildTree(B,v+1)
+if D then
+C.Children=D.Children
 end
 end
 
-table.insert(u,z)
-v+=1
+table.insert(x,C)
+y+=1
 end
 
 return{
-Name=r.Name,
-ClassName=r.ClassName,
-ChildCount=w,
-TruncatedAt=if v<w then v else nil,
-Children=u
+Name=u.Name,
+ClassName=u.ClassName,
+ChildCount=z,
+TruncatedAt=if y<z then y else nil,
+Children=x
 }
 end
 
-local r=buildTree(i,0)
-if q and typeof(r)=="table"then
-r.Note="Output capped at "..o.." nodes. Narrow with classFilter, lower maxDepth, or summaryOnly=true."
+local u=buildTree(i,0)
+if typeof(u)=="table"then
+u.VisitedDescendants=r
+u.TraversalLimited=s
 end
-return r
+if q and typeof(u)=="table"then
+u.Note="Output capped at "..o.." nodes. Use dex-query to continue a bounded scan."
+elseif s and typeof(u)=="table"then
+u.Note="Traversal work/time budget reached, including unmatched nodes. Use dex-query for continuation."
+end
+return u
 end)
 end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
 
@@ -5664,6 +5699,1554 @@ return g
 end)
 end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
 
+
+
+local b={}
+b.__index=b
+
+local c={
+maxDepth=1,
+maxEntries=10,
+maxStringBytes=256,
+maxStringBytesPerValue=256,
+expandTables=true,
+}
+
+local d={
+{"BasePart",{"Position","Size","CFrame","Anchored","CanCollide","CanTouch","CanQuery","Transparency","Color","Material","CollisionGroup","AssemblyLinearVelocity","AssemblyAngularVelocity","Massless"}},
+{"Model",{"PrimaryPart","WorldPivot","ModelStreamingMode"}},
+{"Humanoid",{"Health","MaxHealth","WalkSpeed","JumpPower","JumpHeight","UseJumpPower","HipHeight","MoveDirection","FloorMaterial","RootPart","Sit","PlatformStand","AutoRotate","RigType"}},
+{"ValueBase",{"Value"}},
+{"GuiObject",{"Visible","Position","Size","AnchorPoint","AbsolutePosition","AbsoluteSize","AbsoluteRotation","ZIndex","LayoutOrder","ClipsDescendants","Active","Selectable","AutomaticSize","BackgroundColor3","BackgroundTransparency","BorderSizePixel","Rotation"}},
+{"TextLabel",{"Text","TextSize","TextScaled","TextWrapped","TextColor3","TextTransparency","TextStrokeTransparency","FontFace","TextBounds","RichText","TextXAlignment","TextYAlignment"}},
+{"TextButton",{"Text","TextSize","TextScaled","TextWrapped","TextColor3","TextTransparency","TextStrokeTransparency","FontFace","TextBounds","RichText","TextXAlignment","TextYAlignment","AutoButtonColor"}},
+{"TextBox",{"Text","PlaceholderText","TextEditable","ClearTextOnFocus","MultiLine","TextSize","TextScaled","TextWrapped","TextColor3","TextStrokeTransparency","FontFace","TextBounds","RichText"}},
+{"ImageLabel",{"Image","IsLoaded","ImageColor3","ImageTransparency","ImageRectOffset","ImageRectSize","ScaleType"}},
+{"ImageButton",{"Image","IsLoaded","ImageColor3","ImageTransparency","ImageRectOffset","ImageRectSize","ScaleType","AutoButtonColor"}},
+{"ScrollingFrame",{"CanvasPosition","CanvasSize","AbsoluteCanvasSize","AbsoluteWindowSize","AutomaticCanvasSize","ScrollingEnabled","ScrollingDirection","ScrollBarThickness"}},
+{"LayerCollector",{"Enabled","ResetOnSpawn","ZIndexBehavior"}},
+{"ScreenGui",{"DisplayOrder","IgnoreGuiInset","ScreenInsets","ClipToDeviceSafeArea"}},
+{"BillboardGui",{"Adornee","AlwaysOnTop","Size","StudsOffset","MaxDistance"}},
+{"SurfaceGui",{"Adornee","Face","CanvasSize","AlwaysOnTop","PixelsPerStud"}},
+{"UIGridStyleLayout",{"AbsoluteContentSize","FillDirection","HorizontalAlignment","VerticalAlignment","SortOrder"}},
+{"UIListLayout",{"Padding"}},
+{"UIGridLayout",{"CellSize","CellPadding","FillDirectionMaxCells"}},
+{"UIPadding",{"PaddingTop","PaddingBottom","PaddingLeft","PaddingRight"}},
+{"UIScale",{"Scale"}},
+{"UISizeConstraint",{"MinSize","MaxSize"}},
+{"UIAspectRatioConstraint",{"AspectRatio","AspectType","DominantAxis"}},
+{"BaseScript",{"Enabled","RunContext"}},
+{"Sound",{"SoundId","IsLoaded","Playing","TimePosition","TimeLength","Volume","PlaybackSpeed","Looped","RollOffMaxDistance","RollOffMinDistance","SoundGroup"}},
+{"Animation",{"AnimationId"}},
+{"Decal",{"Texture","Transparency","Color3","Face"}},
+{"Texture",{"StudsPerTileU","StudsPerTileV","OffsetStudsU","OffsetStudsV"}},
+{"MeshPart",{"MeshId","TextureID","RenderFidelity","CollisionFidelity"}},
+{"SpecialMesh",{"MeshId","TextureId","MeshType","Scale","Offset"}},
+{"Attachment",{"Position","CFrame","WorldPosition","WorldCFrame"}},
+{"Constraint",{"Enabled","Active","Attachment0","Attachment1","Visible"}},
+{"JointInstance",{"Part0","Part1","C0","C1","Enabled","Active"}},
+{"Camera",{"CFrame","Focus","CameraSubject","CameraType","FieldOfView","ViewportSize"}},
+{"ProximityPrompt",{"Enabled","ActionText","ObjectText","HoldDuration","MaxActivationDistance","RequiresLineOfSight","KeyboardKeyCode","GamepadKeyCode"}},
+{"ClickDetector",{"MaxActivationDistance","CursorIcon"}},
+}
+
+local function Clamp(e,f,g,h)
+local i=tonumber(e)
+if i==nil or i~=i then i=f end
+return math.max(g,math.min(h,math.floor(i)))
+end
+
+local function Short(e,f)
+local g,h=pcall(tostring,e)
+if not g then return"<unprintable>"end
+if#h<=f then return h end
+
+local i=f-3
+while i>0 do
+local j=string.byte(h,i+1)
+if j==nil or j<128 or j>=192 then break end
+i-=1
+end
+return string.sub(h,1,i).."..."
+end
+
+local function ValidProperty(e)
+return type(e)=="string"and#e<=100 and string.match(e,"^[%a_][%w_]*$")~=nil
+end
+
+local function Estimate(e,f,g)
+f=f or 0
+g=g or{}
+if type(e)~="table"then
+if type(e)=="string"then return#e*2+2,0 end
+return 24,0
+end
+if f>10 or g[e]then return 16,1 end
+g[e]=true
+local h,i=2,0
+for j,k in pairs(e)do
+i+=1
+if i>1000 then return 1000000,1001 end
+local l,m=Estimate(k,f+1,g)
+h+=#tostring(j)*2+l+5
+i+=m
+end
+g[e]=nil
+return h,i
+end
+
+function b.new(e)
+assert(e and e.InstancePath and e.Handles and e.Values,"Dex inspection requires paths, handles, and typed values.")
+return setmetatable({
+Paths=e.InstancePath,
+Handles=e.Handles,
+Values=e.Values,
+Measure=e.Measure,
+Typeof=e.Typeof or typeof,
+GetHiddenProperty=e.GetHiddenProperty or(type(gethiddenproperty)=="function"and gethiddenproperty or nil),
+},b)
+end
+
+function b._size(e,f)
+local g,h=Estimate(f)
+if e.Measure then
+local i,j=pcall(e.Measure,f)
+if i and type(j)=="number"and j>=0 then return j,h end
+end
+return g,h
+end
+
+function b._budget(e,f,g)
+return{chars=math.max(0,f-300),entries=math.max(0,g-20),limited=false}
+end
+
+function b._take(e,f,g)
+local h,i=e:_size(g)
+if h+2>f.chars or i+1>f.entries then
+f.limited=true
+return false
+end
+f.chars-=h+2
+f.entries-=i+1
+return true
+end
+
+function b._put(e,f,g,h,i)
+if i==nil then return true end
+if not e:_take(f,{[h]=i})then return false end
+g[h]=i
+return true
+end
+
+function b._isA(e,f,g)
+local h,i=pcall(function()return f:IsA(g)end)
+return h and i==true
+end
+
+function b.ReadProperty(e,f,g,h)
+if not ValidProperty(g)then return false,nil,"Invalid property name."end
+local i,j=pcall(function()return f[g]end)
+if i then return true,j,"ordinary"end
+if h==true then
+if not e.GetHiddenProperty then
+return false,nil,Short(j,180).."; hidden-property access is unavailable."
+end
+local k,l=pcall(e.GetHiddenProperty,f,g)
+if k then return true,l,"hidden"end
+return false,nil,Short(l,240)
+end
+return false,nil,Short(j,240)
+end
+
+function b.Resolve(e,f)
+assert(type(f)=="table","An instance target is required.")
+local g
+if f.handle~=nil then
+assert(f.path==nil and f.pathSegments==nil,"Provide a handle or path target, not both.")
+g=e.Handles:Resolve(f.handle,"instance",false)
+else
+g=e.Paths.Resolve(f,true)
+end
+assert(e.Typeof(g)=="Instance","Target does not reference a Roblox Instance.")
+return g
+end
+
+function b.Describe(e,f)
+assert(e.Typeof(f)=="Instance","Describe expects a Roblox Instance.")
+local g,h=pcall(e.Paths.Describe,f)
+if not g or type(h)~="table"then h={}end
+local i={PathDisplayOnly=true}
+local j={Name=128,ClassName=100,Path=480,FullName=480,DebugId=128}
+for k,l in pairs(j)do
+local m=h[k]
+if m==nil and(k=="Name"or k=="ClassName")then
+local n,o=e:ReadProperty(f,k,false)
+if n then m=o end
+end
+if m~=nil then
+i[k]=Short(m,l)
+if type(m)=="string"and#m>l then i.DisplayTruncated=true end
+end
+end
+i.Name=i.Name or"<unavailable>"
+i.ClassName=i.ClassName or"Instance"
+i.Path=i.Path or"<unavailable>"
+i.Handle=e.Handles:Register(f,"instance",{
+className=i.ClassName,
+path=i.Path,
+},nil,false)
+return i
+end
+
+local function HasOmission(e,f)
+if type(e)~="table"then return false end
+if e.type=="unsupported"or e.originalBytes~=nil or e.entriesOmitted~=nil or e.omitted~=nil or e.omission~=nil or e.truncated==true then return true end
+if(f or 0)>=4 then return false end
+local g=0
+for h,i in pairs(e)do
+g+=1
+if g>100 then return true end
+if HasOmission(i,(f or 0)+1)then return true end
+end
+return false
+end
+
+function b._encode(e,f)
+if e.Typeof(f)=="Instance"then
+local g=e:Describe(f)
+return{
+type="instance",
+handle=g.Handle,
+ref={
+name=g.Name,
+className=g.ClassName,
+path=g.Path,
+debugId=g.DebugId,
+pathDisplayOnly=true,
+},
+},g.DisplayTruncated==true
+end
+if e.Typeof(f)=="Font"then
+local g,h,i=pcall(function()
+local g=tostring(f.Family)
+return{
+type="font",family=Short(g,256),
+weight=f.Weight.Name,style=f.Style.Name,bold=f.Bold,
+},#g>256
+end)
+if g then return h,i end
+return{type="unsupported",error=Short(h,180)},true
+end
+local g,h=pcall(function()return e.Values:Encode(f,c)end)
+if g then
+local i=e.Typeof(f)
+if i=="NumberSequence"or i=="ColorSequence"then
+local j,k=pcall(function()return#f.Keypoints end)
+if j and k>c.maxEntries then h.omitted="keypoint-limit"end
+end
+return h,HasOmission(h)
+end
+return{type="unsupported",error=Short(h,180)},true
+end
+
+function b._putValue(e,f,g,h,i)
+local j,k=e:_encode(i)
+if k then f.limited=true end
+return e:_put(f,g,h,j)
+end
+
+function b._propertyNames(e,f,g,h)
+local i,j={},{}
+local function add(k)
+if#i>=80 or j[k]then return end
+j[k]=true
+table.insert(i,k)
+end
+local k=type(g.properties)=="table"and g.properties or{}
+for l=1,math.min(#k,80)do
+if type(k[l])=="string"then add(k[l])end
+end
+if h=="auto"then
+add"Archivable"
+for l,m in d do
+if e:_isA(f,m[1])then
+for n,o in m[2]do add(o)end
+end
+end
+end
+return i
+end
+
+function b._projection(e,f,g,h,i)
+local j=e:Describe(f)
+if g.includeFullName~=true then j.FullName=nil end
+if not e:_take(h,j)then
+j={Handle=j.Handle,Name=j.Name,ClassName=j.ClassName,PathDisplayOnly=true}
+e:_take(h,j)
+end
+local k=e:_propertyNames(f,g,i)
+if#k>0 then
+local l,m,n={},{},{}
+local o,p=0,0
+for q,r in k do
+local s,t,u=e:ReadProperty(f,r,g.includeHidden==true)
+if s then
+if not e:_putValue(h,l,r,t)then o+=1 end
+if u=="hidden"and#n<20 then table.insert(n,r)end
+else
+p+=1
+if p<=10 then e:_put(h,m,Short(r,100),u)end
+end
+if h.chars<150 or h.entries<8 then
+o+=#k-q
+h.limited=true
+break
+end
+end
+if next(l)then j.Properties=l end
+if next(m)then j.PropertyErrors=m end
+if#n>0 then j.HiddenPropertiesRead=n end
+if p>0 then j.PropertyErrorCount=p end
+if o>0 then j.PropertiesOmitted=o end
+if#(g.properties or{})>80 then j.RequestedPropertiesOmitted=#g.properties-80 end
+end
+
+if g.includeAttributes==true then
+local l,m=pcall(function()return f:GetAttributes()end)
+if l and type(m)=="table"then
+local n,o,p={},0,0
+local q=Clamp(g.attributeLimit,32,0,64)
+for r,s in pairs(m)do
+p+=1
+if p>q then
+j.AttributesLimited=true
+break
+end
+if not e:_putValue(h,n,Short(r,100),s)then
+j.AttributesLimited=true
+break
+end
+o+=1
+end
+j.Attributes=n
+j.AttributesReturned=o
+else
+e:_put(h,j,"AttributeError",Short(m,240))
+end
+end
+
+if g.includeTags==true then
+local l,m=pcall(function()return f:GetTags()end)
+if l and type(m)=="table"then
+local n,o={},{}
+local p=Clamp(g.tagLimit,32,0,64)
+for q=1,math.min(#m,p)do
+table.insert(o,Short(m[q],100))
+if type(m[q])=="string"and#m[q]>100 then j.TagsLimited=true end
+end
+table.sort(o)
+for q,r in o do
+if not e:_take(h,r)then break end
+table.insert(n,r)
+end
+j.Tags=n
+j.TagCount=#m
+if#n<#m then j.TagsLimited=true end
+else
+e:_put(h,j,"TagError",Short(m,240))
+end
+end
+j.Truncated=j.DisplayTruncated or h.limited or j.AttributesLimited or j.TagsLimited or nil
+return j
+end
+
+function b.QueryRecord(e,f,g)
+g=g or{}
+local h=e:_budget(Clamp(g.maxChars,6000,800,20000),Clamp(g.maxEntries,240,30,800))
+return e:_projection(f,g,h,"none")
+end
+
+function b._bounds(e,f)
+if e:_isA(f,"BasePart")then
+return{Kind="BasePart",Properties={"Position","Size","CFrame"}}
+elseif e:_isA(f,"GuiObject")then
+return{Kind="GuiObject",Properties={"AbsolutePosition","AbsoluteSize","Visible","ZIndex"}}
+elseif e:_isA(f,"Model")then
+
+
+return{Kind="Model",Properties={"WorldPivot","PrimaryPart"},Note="Model bounding-box calculation omitted to avoid an unbounded descendant scan."}
+end
+return nil
+end
+
+function b._ancestry(e,f,g,h,i)
+local j=e:_isA(f,"GuiObject")or e:_isA(f,"LayerCollector")
+local k=g.includeAncestors~=false
+if not j and not k then return end
+local l=Clamp(g.ancestorLimit,8,0,32)
+local m,n={},{}
+local o,p,q,r=f,0,false,false
+local s=0
+
+for t=1,64 do
+p+=1
+if j then
+if e:_isA(o,"GuiObject")then
+local u,v=e:ReadProperty(o,"Visible",false)
+if u and v==false then q=true end
+local w,x=e:ReadProperty(o,"ClipsDescendants",false)
+if o~=f and w and x==true and#n<4 then
+local y=e:Describe(o)
+local z={Handle=y.Handle,Name=y.Name}
+for A,B in{"AbsolutePosition","AbsoluteSize"}do
+local C,D=e:ReadProperty(o,B,false)
+if C then z[B]=e:_encode(D)end
+end
+if e:_take(i,z)then table.insert(n,z)end
+end
+elseif e:_isA(o,"LayerCollector")then
+local u,v=e:ReadProperty(o,"Enabled",false)
+if u and v==false then q=true end
+end
+end
+local u,v=e:ReadProperty(o,"Parent",false)
+if not u then break end
+if v==nil then r=true break end
+if e.Typeof(v)~="Instance"then break end
+s+=1
+if k and#m<l then
+local w=e:Describe(v)
+w.FullName=nil
+if e:_take(i,w)then table.insert(m,w)end
+end
+o=v
+if not j and s>=l then break end
+end
+if k then
+h.Ancestors=m
+h.AncestorsLimited=not r or s>#m
+end
+if j then
+h.Visibility={
+EffectiveVisible=if q then false elseif r then true else nil,
+AncestorsChecked=p,
+Limited=not r,
+Basis="Local Visible/Enabled ancestry only; not occlusion, transparency, viewport intersection, or screenshot visibility.",
+}
+if#n>0 then h.Visibility.ClippingAncestors=n end
+end
+end
+
+function b._inspectOne(e,f,g,h,i)
+local j=e:_budget(h,i)
+local k=table.clone(g)
+k.includeAttributes=g.includeAttributes~=false
+k.includeTags=g.includeTags~=false
+local l=g.profile=="none"and"none"or"auto"
+local m=e:_projection(f,k,j,l)
+m.Profile=l
+if g.includeHidden==true then m.HiddenPropertySupported=e.GetHiddenProperty~=nil end
+
+if g.includeBounds~=false then
+local n=e:_bounds(f)
+if n then
+local o={Kind=n.Kind,Note=n.Note}
+for p,q in n.Properties do
+local r,s=e:ReadProperty(f,q,false)
+if r then o[q]=e:_encode(s)end
+end
+e:_put(j,m,"Bounds",o)
+end
+end
+
+if e:_isA(f,"TextLabel")or e:_isA(f,"TextButton")or e:_isA(f,"TextBox")then
+local n,o=e:ReadProperty(f,"FontFace",false)
+if n and o~=nil then
+local p,q=pcall(function()return o.Family end)
+if p then e:_put(j,m,"FontFamily",Short(q,256))end
+end
+end
+if e:_isA(f,"LuaSourceContainer")then
+e:_put(j,m,"ScriptMetadata",{
+SourceIncluded=m.Properties~=nil and m.Properties.Source~=nil,
+Note="No require or script execution. An explicitly selected Source property may be truncated.",
+})
+end
+if e:_isA(f,"RemoteEvent")or e:_isA(f,"RemoteFunction")or e:_isA(f,"UnreliableRemoteEvent")then
+e:_put(j,m,"RemoteMetadata",{Invoked=false,Note="Instance metadata only; no arguments or server implementation inferred."})
+end
+
+e:_ancestry(f,g,m,j)
+if g.includeChildren~=false then
+local n,o=pcall(function()return f:GetChildren()end)
+if n and type(o)=="table"then
+local p=Clamp(g.childOffset,0,0,1000000000)
+local q=Clamp(g.childLimit,20,0,100)
+local r={}
+for s=p+1,math.min(#o,p+q)do
+local t,u=pcall(function()return e:Describe(o[s])end)
+if t then
+u.FullName=nil
+if not e:_take(j,u)then break end
+table.insert(r,u)
+else
+j.limited=true
+break
+end
+end
+m.ChildCount=#o
+m.ChildOffset=p
+m.Children=r
+m.ChildrenLimited=p+#r<#o
+m.ChildrenPageStable=false
+if m.ChildrenLimited then m.NextChildOffset=p+#r end
+else
+e:_put(j,m,"ChildError",Short(o,240))
+end
+end
+m.Truncated=m.Truncated or j.limited or nil
+return m
+end
+
+function b.Inspect(e,f)
+f=f or{}
+local g=f.targets or(f.target and{f.target})
+assert(type(g)=="table"and#g>0 and#g<=20,"Inspect requires 1-20 instance targets.")
+local h=Clamp(f.maxChars,20000,1000,60000)
+local i,j=h-500,840
+local k={}
+local l=false
+for m,n in ipairs(g)do
+local o=#g-m+1
+local p=math.floor(i/o)
+local q=math.floor(j/o)
+if p<500 or q<15 then l=true break end
+local r,s=pcall(function()
+return e:_inspectOne(e:Resolve(n),f,p,q)
+end)
+if not r then s={TargetIndex=m,Error=Short(s,240)}end
+s.TargetIndex=m
+local t,u=e:_size(s)
+if t>i or u+1>j then
+l=true
+break
+end
+i-=t+1
+j-=u+1
+table.insert(k,s)
+if s.Truncated then l=true end
+end
+return{
+results=k,
+requestedCount=#g,
+returnedCount=#k,
+targetsOmitted=#g-#k,
+nextTargetIndex=#k<#g and#k+1 or nil,
+limited=l,
+maxChars=h,
+scope="Client-visible replicated/local instances only.",
+}
+end
+
+return b end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+
+
+
+local b={}
+b.__index=b
+
+local function Integer(c,d,e,f)
+local g=tonumber(c)
+if g==nil or g~=g then g=d end
+return math.clamp(math.floor(g),e,f)
+end
+
+local function Equal(c,d)
+if type(c)~=type(d)then return false end
+if type(c)~="table"then return c==d end
+for e,f in pairs(c)do if not Equal(f,d[e])then return false end end
+for e in pairs(d)do if c[e]==nil then return false end end
+return true
+end
+
+local function EntryCount(c,d)
+if type(c)~="table"then return 0 end
+if(d or 0)>=8 then return 1000,"serialization-depth-limit"end
+local e,f=0,0
+for g,h in pairs(c)do
+f+=1
+if f>256 then return 1000,"serialization-table-entry-limit"end
+local i,j=EntryCount(h,(d or 0)+1)
+if j then return 1000,j end
+e+=1+i
+if e>1000 then break end
+end
+return e
+end
+
+local function Contains(c,d,e)
+if type(c)~="string"then return false end
+if not e then c,d=string.lower(c),string.lower(d)end
+return string.find(c,d,1,true)~=nil
+end
+
+function b.new(c)
+return setmetatable({
+inspector=c.Inspector,
+clock=c.Clock or os.clock,
+measure=c.Measure or function(d)return EntryCount(d)*80 end,
+newId=c.NewId,
+serial=0,
+sessions={},
+ttl=c.TtlSeconds or 300,
+maxSessions=c.MaxSessions or 4,
+maxSnapshotBytes=c.MaxSnapshotBytes or 2097152,
+maxSnapshotRecords=c.MaxSnapshotRecords or 3000,
+},b)
+end
+
+function b.Sweep(c)
+local d=c.clock()
+for e,f in pairs(c.sessions)do
+if f.expiresAt<=d then c.sessions[e]=nil end
+end
+end
+
+function b.Destroy(c)
+table.clear(c.sessions)
+end
+
+
+
+
+function b._fitEnvelope(c,d,e,f)
+local g=f-350
+if c.measure(d)<=g then return d end
+local h=d[e]or{}
+for i=#h,1,-1 do
+local j=h[i]
+local k={
+Handle=j.Handle,snapshotId=j.snapshotId,kind=j.kind,
+omitted=true,reason="envelope-budget",
+}
+if c.measure(k)<c.measure(j)then
+h[i]=k
+d.detailsOmitted=(d.detailsOmitted or 0)+(j.omitted and 0 or 1)
+d.detailsComplete=false
+end
+if c.measure(d)<=g then return d end
+end
+assert(c.measure(d)<=g,"Dex page metadata exceeds the output budget; increase maxOutputChars.")
+return d
+end
+
+function b._get(c,d)
+c:Sweep()
+local e=c.sessions[d]
+assert(e,"Dex scan/snapshot expired, was released, was evicted under capacity pressure, or belongs to another connection. Start a new scan.")
+return e
+end
+
+function b._start(c,d,e)
+c:Sweep()
+local f=0
+for g in pairs(c.sessions)do f+=1 end
+
+
+while f>=c.maxSessions do
+local g
+for h,i in pairs(c.sessions)do
+if i.done and not i.retain and(not g or i.ordinal<g.ordinal)then
+g=i
+end
+end
+if not g then break end
+c.sessions[g.id]=nil
+f-=1
+end
+assert(f<c.maxSessions,"Dex scan capacity reached. Release a scan with dex-snapshot operation=release.")
+local g=c.inspector:Resolve(d.root or{path="workspace"})
+local h=c.inspector:Describe(g)
+local i=e=="references"and c.inspector:Resolve(d.target)or nil
+c.serial+=1
+local j="dx_"..(c.newId and c.newId()or tostring(math.floor(c.clock()*1000000))).."_"..c.serial
+local k={
+id=j,mode=e,revision=0,ordinal=c.serial,createdAt=c.clock(),expiresAt=c.clock()+c.ttl,
+root=h,referenced=i,options=d,
+stack={{nodes={g},index=1,depth=0}},
+buffered=1,visited=0,matched=0,seen={},counts={},
+readErrors=0,projectionErrors=0,depthLimited=false,
+limited=false,reasons={},records={},byHandle={},snapshotBytes=0,
+retain=e=="query"and d.retainSnapshot==true,done=false,
+maxNodes=Integer(d.maxNodes,50000,1,100000),
+maxDepth=Integer(d.maxDepth,64,0,100),
+}
+c.sessions[j]=k
+return k
+end
+
+function b._limit(c,d,e)
+d.limited=true
+d.reasons[e]=true
+end
+
+function b._matches(c,d,e)
+local f=e.options.filters or{}
+if f.nameContains and not Contains(d.Name,f.nameContains,f.caseSensitive)then return false end
+if f.className and d.ClassName~=f.className then return false end
+if f.isA and not d:IsA(f.isA)then return false end
+if f.tag and not d:HasTag(f.tag)then return false end
+if f.attribute then
+local g=d:GetAttribute(f.attribute.name)
+if g==nil then return false end
+if f.attribute.equals~=nil and g~=f.attribute.equals then return false end
+end
+if f.textContains then
+if not(d:IsA"TextLabel"or d:IsA"TextButton"or d:IsA"TextBox")then return false end
+if not Contains(d.Text,f.textContains,f.caseSensitive)then return false end
+end
+return true
+end
+
+function b._record(c,d,e,f)
+if e.mode=="references"then
+local g={}
+for h,i in ipairs(e.options.properties or{})do
+if h>20 then break end
+local j,k=c.inspector:ReadProperty(d,i,false)
+if j and k==e.referenced then table.insert(g,i)end
+end
+if#g==0 then return nil end
+local h=c.inspector:Describe(d)
+h.ReferenceProperties=g
+h.Depth=f
+return h
+end
+if not c:_matches(d,e)then return nil end
+local g=c.inspector:QueryRecord(d,e.options)
+g.Depth=f
+local h=d.Parent
+if h then g.ParentHandle=c.inspector:Describe(h).Handle end
+return g
+end
+
+function b._prune(c,d)
+while#d.stack>0 do
+local e=d.stack[#d.stack]
+if e.index<=#e.nodes then break end
+d.buffered-=#e.nodes
+table.remove(d.stack)
+end
+end
+
+function b._visit(c,d)
+c:_prune(d)
+if#d.stack==0 then return nil end
+if d.visited>=d.maxNodes then
+c:_limit(d,"node-limit")
+table.clear(d.stack)
+return nil
+end
+local e=d.stack[#d.stack]
+local f=e.nodes[e.index]
+e.index+=1
+d.visited+=1
+if d.seen[f]then return nil end
+d.seen[f]=true
+
+local g,h=pcall(function()return f:GetChildren()end)
+if g then
+if#h>0 then
+if e.depth>=d.maxDepth then
+d.depthLimited=true
+elseif d.buffered+#h>100000 then
+c:_limit(d,"frontier-limit")
+else
+table.insert(d.stack,{nodes=h,index=1,depth=e.depth+1})
+d.buffered+=#h
+end
+end
+else
+d.readErrors+=1
+end
+
+local i,j=pcall(function()return c:_record(f,d,e.depth)end)
+if not i then d.readErrors+=1 return nil end
+if not j then return nil end
+d.matched+=1
+local k=j.ClassName or"Unknown"
+d.counts[k]=(d.counts[k]or 0)+1
+if j.PropertyErrorCount or j.AttributeError or j.TagError or j.PropertiesOmitted
+or j.AttributesLimited or j.TagsLimited or j.Truncated then
+d.projectionErrors+=1
+end
+if d.retain then
+local l=c.measure(j)
+if#d.records>=c.maxSnapshotRecords or d.snapshotBytes+l>c.maxSnapshotBytes then
+c:_limit(d,"snapshot-retention-limit")
+else
+table.insert(d.records,j)
+d.byHandle[j.Handle]=j
+d.snapshotBytes+=l
+end
+end
+return j
+end
+
+function b.Query(c,d,e)
+e=e or"query"
+local f
+if d.cursor then
+local g,h=string.match(d.cursor,"^(.-):(%d+)$")
+assert(g,"Invalid Dex continuation cursor.")
+f=c:_get(g)
+assert(f.mode==e,"This cursor belongs to another Dex tool.")
+h=tonumber(h)
+if f.lastInput==h then return f.lastResponse end
+assert(h==f.revision and not f.done,"Stale or completed Dex cursor. Use nextCursor from the last response.")
+else
+f=c:_start(d,e)
+end
+f.expiresAt=c.clock()+c.ttl
+local g=f.revision
+local h=Integer(d.limit,25,1,100)
+local i=Integer(d.scanBudget,1000,1,10000)
+local j=Integer(d.maxChars,20000,2000,60000)
+local k=c.clock()+Integer(d.timeBudgetMs,8,1,50)/1000
+local l,m,n,o={},1000,100,0
+local p=f.visited
+repeat
+local q=f.pending
+f.pending=nil
+if not q then q=c:_visit(f)end
+if q then
+
+local r=c.measure(q)
+local s,t=EntryCount(q,2)
+if t or r+m>j or s+n>850 then
+if#l>0 then f.pending=q break end
+q={
+Handle=q.Handle,Name=string.sub(q.Name or"",1,100),
+ClassName=q.ClassName,omitted=true,
+reason=t or"page-budget",
+note="Record details omitted; use dex-inspect with fewer fields.",
+}
+r,s=c.measure(q),EntryCount(q,2)
+o+=1
+end
+table.insert(l,q)
+m+=r
+n+=s
+end
+c:_prune(f)
+until#l>=h or#f.stack==0 or f.visited-p>=i or c.clock()>=k
+c:_prune(f)
+f.done=#f.stack==0 and f.pending==nil
+if f.done then
+f.finishedAt=c.clock()
+table.clear(f.seen)
+f.referenced=nil
+end
+f.revision+=1
+local q={}
+for r in pairs(f.reasons)do table.insert(q,r)end
+table.sort(q)
+local r={
+scanId=f.id,snapshotId=f.retain and f.id or nil,
+results=l,returned=#l,
+visitedThisPage=f.visited-p,visited=f.visited,matched=f.matched,
+done=f.done,complete=f.done and not f.limited and f.readErrors==0,
+nextCursor=not f.done and(f.id..":"..f.revision)or nil,
+limited=f.limited,limitReasons=q,depthLimited=f.depthLimited,
+readErrors=f.readErrors,projectionErrors=f.projectionErrors,
+projectionComplete=f.projectionErrors==0,
+retainedRecords=#f.records,capturedAt=f.createdAt,expiresInSeconds=c.ttl,
+detailsComplete=o==0,detailsOmitted=o,
+replayRetention="Completed non-retained scans may be evicted when new scans need capacity.",
+scope="client-visible, non-atomic; streamed-out and server-only descendants are not observable",
+enumerationNote="Per-page budgets include non-matches. GetChildren is an atomic engine allocation; very wide parents can exceed a time slice.",
+}
+if e=="references"then r.coverage="Only supplied readable Instance-valued properties; not arbitrary Lua/GC references."end
+r=c:_fitEnvelope(r,"results",j)
+f.complete=r.complete
+f.lastInput,f.lastResponse=g,r
+return r
+end
+
+local function PublicSnapshot(c)
+return{
+snapshotId=c.id,root={Handle=c.root.Handle,Name=c.root.Name},retained=#c.records,
+matched=c.matched,visited=c.visited,done=c.done,
+complete=c.complete==true,capturedAt=c.createdAt,finishedAt=c.finishedAt,
+}
+end
+
+function b.Snapshots(c,d)
+c:Sweep()
+if d.operation=="list"then
+local e={}
+for f,g in pairs(c.sessions)do
+local h=PublicSnapshot(g)
+h.snapshotRetained=g.retain
+table.insert(e,h)
+end
+table.sort(e,function(f,g)return f.snapshotId<g.snapshotId end)
+return c:_fitEnvelope({
+snapshots=e,capacity=c.maxSessions,ttlSeconds=c.ttl,
+detailsComplete=true,detailsOmitted=0,
+},"snapshots",Integer(d.maxChars,20000,2000,60000))
+end
+if d.operation=="release"then
+local e=c.sessions[d.snapshotId]~=nil
+c.sessions[d.snapshotId]=nil
+return{released=e,snapshotId=d.snapshotId}
+end
+local e=Integer(d.cursor,0,0,1000000)
+local f=Integer(d.limit,25,1,100)
+local g=Integer(d.maxChars,20000,2000,60000)
+local h,i,j,k={},1000,100,0
+local function add(l)
+
+
+local m=c.measure(l)
+local n,o=EntryCount(l,2)
+if o or i+m>g or j+n>850 then
+if#h>0 then return false end
+l={
+Handle=l.Handle,kind=l.kind,fields=l.fields,omitted=true,
+reason=o or"page-budget",
+note="Page the before/after snapshots or inspect this handle with fewer fields for details.",
+}
+m,n=c.measure(l),EntryCount(l,2)
+k+=1
+end
+table.insert(h,l)
+i+=m
+j+=n
+return true
+end
+if d.operation=="page"then
+local l=c:_get(d.snapshotId)
+assert(l.retain,"This scan did not retain a snapshot. Start dex-query with retainSnapshot=true.")
+local m=e
+while m<#l.records and#h<f do
+if not add(l.records[m+1])then break end
+m+=1
+end
+return c:_fitEnvelope({
+snapshot=PublicSnapshot(l),results=h,cursor=e,
+nextCursor=m<#l.records and m or nil,
+detailsComplete=k==0,detailsOmitted=k,
+},"results",g)
+end
+assert(d.operation=="diff","Unknown Dex snapshot operation.")
+local l,m=c:_get(d.beforeId),c:_get(d.afterId)
+assert(l.retain and m.retain,"Both scans must retain snapshots.")
+assert(l.mode=="query"and m.mode=="query","Only retained Dex queries can be compared.")
+assert(l.complete and m.complete,"Diff requires completed, uncapped scans without traversal errors; continue or narrow both scans first.")
+assert(l.projectionErrors==0 and m.projectionErrors==0,"Diff requires fully captured projections; use fewer fields or resolve reported property errors.")
+assert(l.root.Handle==m.root.Handle,"Snapshots must have the same root instance.")
+for n,o in ipairs{"filters","properties","includeAttributes","includeTags","maxDepth"}do
+assert(Equal(l.options[o],m.options[o]),"Snapshot projection/scope differs: "..o)
+end
+local n,o=e,0
+local p=#l.records+#m.records
+while n<p and#h<f and o<2000 do
+local q
+if n<#l.records then
+local r=l.records[n+1]
+local s=m.byHandle[r.Handle]
+if not s then
+q={kind="removed",Handle=r.Handle,before=r}
+elseif not Equal(r,s)then
+local t,u={},{}
+for v,w in pairs(r)do
+if not Equal(w,s[v])then
+table.insert(t,v)
+u[v]={before=w,after=s[v]}
+end
+end
+for v,w in pairs(s)do
+if r[v]==nil then table.insert(t,v)u[v]={after=w}end
+end
+table.sort(t)
+q={
+kind=r.ParentHandle~=s.ParentHandle and"moved"or"changed",
+Handle=r.Handle,fields=t,changes=u,
+}
+end
+else
+local r=m.records[n-#l.records+1]
+if not l.byHandle[r.Handle]then q={kind="added",Handle=r.Handle,after=r}end
+end
+if q and not add(q)then break end
+n+=1
+o+=1
+end
+return c:_fitEnvelope({
+beforeId=l.id,afterId=m.id,changes=h,
+cursor=e,nextCursor=n<p and n or nil,examined=o,
+complete=n>=p,atomic=false,
+detailsComplete=k==0,detailsOmitted=k,
+note="Differences cover captured projections only. Removed means no longer observed in this scope, not proof of destruction.",
+},"changes",g)
+end
+
+return b end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+
+local b={}
+b.__index=b
+
+local c={"Handle","Name","ClassName","Path","DebugId"}
+local d=350
+local e=0
+
+local function Integer(f,g,h,i)
+local j=tonumber(f)
+if j==nil or j~=j then j=g end
+return math.clamp(math.floor(j),h,i)
+end
+
+local function Short(f,g)
+local h,i=pcall(tostring,f)
+if not h then return"unavailable"end
+local j=g or 200
+if#i<=j then return i end
+while j>0 do
+local k=string.byte(i,j+1)
+if k==nil or k<128 or k>=192 then break end
+j-=1
+end
+return string.sub(i,1,j)
+end
+
+local function List(f,g,h,i)
+if f==nil then return{}end
+assert(type(f)=="table",g.." must be an array.")
+local j,k,l={},{},0
+for m,n in pairs(f)do
+l+=1
+assert(l<=h,g.." exceeds "..h.." entries.")
+assert(type(m)=="number"and m>=1 and m%1==0 and m<=h,
+g.." must be a dense array.")
+if i then
+assert(type(n)=="string"and#n>0 and#n<=128,
+g.." entries must be nonempty names up to 128 bytes.")
+end
+end
+for m=1,l do
+local n=f[m]
+assert(n~=nil,g.." must be a dense array.")
+if not k[n]then
+k[n]=true
+table.insert(j,n)
+end
+end
+return j
+end
+
+
+
+local function Size(f,g)
+if type(f)=="string"then
+g.bytes+=2
+for h=1,#f do
+local i=string.byte(f,h)
+
+
+g.bytes+=if i==34 or i==92 then 2 elseif i<32 or i>=127 then 6 else 1
+end
+return
+end
+if type(f)~="table"then
+g.bytes+=32
+return
+end
+if g.seen[f]then
+g.entries=1000
+return
+end
+g.seen[f]=true
+g.bytes+=2
+for h,i in pairs(f)do
+g.entries+=1
+if g.entries>850 then return end
+Size(h,g)
+Size(i,g)
+if g.entries>850 then return end
+g.bytes+=2
+end
+g.seen[f]=nil
+end
+
+function b.new(f)
+f=f or{}
+assert(f.Inspector~=nil and type(f.Inspector._encode)=="function","Dex watch requires an Inspector with bounded value encoding.")
+e+=1
+local g=f.Clock or os.clock
+
+
+local h=if f.NewId then f.NewId()else tostring(math.floor(g()*1000000)).."-"..e
+assert(type(h)=="string"and#h>0 and#h<=80,"Dex watch registry ID must be 1-80 bytes.")
+return setmetatable({
+Inspector=f.Inspector,
+Clock=g,
+registryId=h,
+Measure=f.Measure,
+maxWatchers=Integer(f.MaxWatchers,8,1,8),
+watchers={},
+finished={},
+finishedOrder={},
+serial=0,
+destroyed=false,
+},b)
+end
+
+function b._describe(f,g)
+local h,i=pcall(function()return f.Inspector:Describe(g)end)
+if not h or type(i)~="table"then return{unavailable=true}end
+local j={
+PathDisplayOnly=i.PathDisplayOnly~=false,
+DisplayTruncated=i.DisplayTruncated,
+}
+for k,l in ipairs(c)do
+if type(i[l])=="string"then
+
+j[l]=i[l]
+end
+end
+return j
+end
+
+function b._encode(f,g)
+
+local h,i,j=pcall(function()return f.Inspector:_encode(g)end)
+if h and type(i)=="table"then
+if j==true then
+i=table.clone(i)
+i.truncated=true
+end
+return i
+end
+return{type="unavailable",error=if h then"Invalid encoded value."else Short(i)}
+end
+
+function b._read(f,g,h,i)
+if i then
+return pcall(function()return g:GetAttribute(h)end)
+end
+local j,k,l,m=pcall(function()return f.Inspector:ReadProperty(g,h,false)end)
+if not j then return false,k end
+return k,if k then l else m
+end
+
+function b._warning(f,g,h,i,j)
+if#g.warnings<20 then
+table.insert(g.warnings,{kind=h,name=i,error=Short(j)})
+else
+g.warningsOmitted+=1
+end
+end
+
+function b._finish(f,g,h)
+if not g.active then return end
+g.active=false
+for i,j in ipairs(g.connections)do
+pcall(function()j:Disconnect()end)
+end
+g.connections={}
+g.events={}
+f.watchers[g.id]=nil
+f.finished[g.id]={
+watcherId=g.id,
+active=false,
+expired=h=="expired",
+reason=h,
+nextCursor=g.latestCursor,
+latestCursor=g.latestCursor,
+droppedEvents=g.droppedEvents,
+expiresAt=g.expiresAt,
+}
+table.insert(f.finishedOrder,g.id)
+if#f.finishedOrder>32 then f.finished[table.remove(f.finishedOrder,1)]=nil end
+end
+
+
+function b.Sweep(f)
+local g,h=f.Clock(),0
+for i,j in pairs(f.watchers)do
+if g>=j.expiresAt then
+f:_finish(j,"expired")
+h+=1
+end
+end
+return h
+end
+
+function b._push(f,g,h)
+if not g.active then return end
+if f.Clock()>=g.expiresAt then
+f:_finish(g,"expired")
+return
+end
+g.latestCursor+=1
+h.cursor=g.latestCursor
+h.observedAt=f.Clock()
+local i
+if g.count<g.capacity then
+i=((g.head+g.count-1)%g.capacity)+1
+g.count+=1
+else
+i=g.head
+g.head=(g.head%g.capacity)+1
+g.droppedEvents+=1
+end
+g.events[i]=h
+end
+
+function b._connect(f,g,h,i,j,k)
+local l,m=pcall(function()
+return j():Connect(function(...)
+if not g.active then return end
+if f.Clock()>=g.expiresAt then
+f:_finish(g,"expired")
+return
+end
+local l,m=pcall(k,...)
+if not l then
+f:_push(g,{kind="observation-error",source=h,name=i,error=Short(m)})
+end
+end)
+end)
+if l and m~=nil then
+table.insert(g.connections,m)
+return true
+end
+f:_warning(g,h,i,if l then"Signal did not return a connection."else m)
+return false
+end
+
+function b._watchValue(f,g,h,i,j)
+local k=if j then"attribute"else"property"
+local l,m=f:_read(h,i,j)
+if not l then
+f:_warning(g,k,i,m)
+return
+end
+local n=f:_encode(m)
+local o=f:_connect(g,k,i,function()
+return if j then h:GetAttributeChangedSignal(i)else h:GetPropertyChangedSignal(i)
+end,function()
+local o,p=f:_read(h,i,j)
+local q=if o then f:_encode(p)else{type="unavailable",error=Short(p)}
+f:_push(g,{
+kind=k,
+name=i,
+target=f:_describe(h),
+oldValue=n,
+newValue=q,
+})
+n=q
+end)
+if o then
+local p=if j then"observedAttributeCount"else"observedPropertyCount"
+g[p]+=1
+end
+end
+
+function b.Start(f,g)
+assert(not f.destroyed,"Dex watcher has been destroyed.")
+g=g or{}
+f:Sweep()
+local h=List(g.targets,"targets",10,false)
+local i=List(g.properties,"properties",20,true)
+local j=List(g.attributes,"attributes",20,true)
+assert(#h>0,"At least one watch target is required.")
+assert(#i+#j>0 or g.includeChildren==true or g.includeAncestry==true,
+"Select properties, attributes, children, or ancestry to watch.")
+local k=0
+for l in pairs(f.watchers)do k+=1 end
+assert(k<f.maxWatchers,"Dex watcher limit reached; stop an existing watcher first.")
+
+
+local l,m={},{}
+for n,o in ipairs(h)do
+local p=f.Inspector:Resolve(o)
+assert(p~=nil,"Watch target was not found.")
+if not m[p]then
+m[p]=true
+table.insert(l,p)
+end
+end
+f.serial+=1
+local n={
+id="dex-watch-"..f.registryId.."-"..f.serial,
+active=true,
+capacity=Integer(g.maxEvents,200,1,500),
+expiresAt=f.Clock()+Integer(g.ttlSeconds,300,1,3600),
+connections={},events={},head=1,count=0,latestCursor=0,droppedEvents=0,
+warnings={},warningsOmitted=0,observedPropertyCount=0,observedAttributeCount=0,
+}
+f.watchers[n.id]=n
+local o={}
+local p,q=pcall(function()
+for p,q in ipairs(l)do
+table.insert(o,f:_describe(q))
+for r,s in ipairs(i)do f:_watchValue(n,q,s,false)end
+for r,s in ipairs(j)do f:_watchValue(n,q,s,true)end
+if g.includeChildren==true then
+for r,s in ipairs{"child-added","child-removed"}do
+f:_connect(n,s,nil,function()
+return if s=="child-added"then q.ChildAdded else q.ChildRemoved
+end,function(t)
+f:_push(n,{
+kind=s,
+target=f:_describe(q),
+oldValue=f:_encode(if s=="child-removed"then t else nil),
+newValue=f:_encode(if s=="child-added"then t else nil),
+})
+end)
+end
+end
+if g.includeAncestry==true then
+local r,s=f:_read(q,"Parent",false)
+local t=if r then f:_encode(s)else{type="unavailable"}
+local u=f:_describe(q).Path
+f:_connect(n,"ancestry",nil,function()return q.AncestryChanged end,
+function(v,w)
+local x,y=f:_read(q,"Parent",false)
+local z=if x then f:_encode(y)else{type="unavailable"}
+local A=f:_describe(q)
+f:_push(n,{
+kind="ancestry",target=A,changedInstance=f:_describe(v),
+changedParent=f:_encode(w),
+oldValue=t,newValue=z,oldPath=u,newPath=A.Path,
+})
+t,u=z,A.Path
+end)
+end
+end
+assert(#n.connections>0,"No requested watch signals were available.")
+end)
+if not p then
+f:_finish(n,"start-failed")
+error(q)
+end
+local r={
+watcherId=n.id,active=true,nextCursor=0,expiresAt=n.expiresAt,
+maxEvents=n.capacity,targets=o,connectionCount=#n.connections,
+observedPropertyCount=n.observedPropertyCount,observedAttributeCount=n.observedAttributeCount,
+warnings=table.clone(n.warnings),warningsOmitted=n.warningsOmitted,
+targetDetailsOmitted=0,targetsOmitted=0,
+}
+local s=Integer(g.maxChars,20000,2000,60000)
+
+
+for t=#r.targets,1,-1 do
+if f:_fits(r,s)then break end
+r.targets[t]={Handle=r.targets[t].Handle,omitted=true}
+r.targetDetailsOmitted+=1
+end
+while#r.warnings>0 and not f:_fits(r,s)do
+table.remove(r.warnings)
+r.warningsOmitted+=1
+end
+while#r.targets>0 and not f:_fits(r,s)do
+table.remove(r.targets)
+r.targetsOmitted+=1
+end
+if not f:_fits(r,s)then
+f:_finish(n,"start-failed")
+error"Watch startup metadata cannot fit the requested output budget."
+end
+return r
+end
+
+function b._fits(f,g,h)
+h=math.max(0,h-d)
+local i={entries=0,bytes=0,seen={}}
+Size(g,i)
+if i.entries>850 then return false end
+if f.Measure then
+local j,k=pcall(f.Measure,g)
+if j and type(k)=="number"and k>=0 and k<math.huge then return k<=h end
+end
+return i.bytes<=h
+end
+
+function b.Poll(f,g)
+g=g or{}
+f:Sweep()
+local h=f.watchers[g.watcherId]
+if not h then
+local i=f.finished[g.watcherId]
+assert(i~=nil,"Unknown Dex watcher; start a new watcher.")
+local j=table.clone(i)
+j.events,j.hasMore={},false
+return j
+end
+local i=Integer(g.cursor,0,0,9007199254740991)
+assert(i<=h.latestCursor,"Watch cursor is newer than the latest event.")
+local j=Integer(g.limit,100,1,100)
+local k=Integer(g.maxChars,20000,2000,60000)
+local l=h.latestCursor-h.count+1
+local m=math.max(0,l-1-i)
+local n={
+watcherId=h.id,active=true,expired=false,expiresAt=h.expiresAt,
+events={},nextCursor=math.max(i,l-1),latestCursor=h.latestCursor,
+earliestAvailableCursor=l,droppedEvents=h.droppedEvents,
+gapEvents=m,cursorExpired=m>0,hasMore=false,
+}
+for o=1,h.count do
+local p=h.events[((h.head+o-2)%h.capacity)+1]
+if p.cursor<=i then continue end
+if#n.events>=j then break end
+local q=n.nextCursor
+table.insert(n.events,p)
+n.nextCursor=p.cursor
+n.hasMore=p.cursor<h.latestCursor
+if not f:_fits(n,k)then
+table.remove(n.events)
+n.nextCursor=q
+if#n.events>0 then break end
+
+table.insert(n.events,{cursor=p.cursor,kind=p.kind,omitted=true,reason="output-budget"})
+n.nextCursor=p.cursor
+end
+end
+n.hasMore=n.nextCursor<h.latestCursor
+return n
+end
+
+function b.Stop(f,g)
+g=g or{}
+f:Sweep()
+local h=f.watchers[g.watcherId]
+if h then f:_finish(h,"stopped")end
+local i=f.finished[g.watcherId]
+assert(i~=nil,"Unknown Dex watcher.")
+return table.clone(i)
+end
+
+function b.Destroy(f)
+f.destroyed=true
+for g,h in pairs(f.watchers)do f:_finish(h,"destroyed")end
+end
+
+return b end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+
+local b=a.d()
+local c=a.D()
+local d=a.E()
+local e=a.F()
+
+return function(f,g)
+local h=game:GetService"HttpService"
+local function measure(i)return#h:JSONEncode(i)end
+local i=c.new{
+InstancePath=b,Handles=f.RuntimeHandles,
+Values=f.RuntimeValues,Measure=measure,
+}
+local j=d.new{
+Inspector=i,Measure=measure,
+NewId=function()return h:GenerateGUID(false)end,
+}
+local k=e.new{
+Inspector=i,Values=f.RuntimeValues,Measure=measure,
+NewId=function()return h:GenerateGUID(false)end,
+}
+local l=true
+local m={
+Version=1,ClientId=g.ClientId,
+Describe=function(m)
+assert(l,"Dex connection closed; reload the MCP connector.")
+return i:Describe(m)
+end,
+}
+getgenv().RobloxMCPDex=m
+
+local function bind(n,o)
+g:BindToTypeStructured(n,function(p)
+assert(l,"Dex connection closed; reconnect and start a fresh query.")
+local q=o(p)
+q.clientId=g.ClientId
+q.connectorGeneration=f.RuntimeHandles.generation
+q.placeId=game.PlaceId
+q.observedAtUnixMs=DateTime.now().UnixTimestampMillis
+return q
+end)
+end
+bind("dex-inspect",function(n)return i:Inspect(n)end)
+bind("dex-query",function(n)return j:Query(n)end)
+bind("dex-references",function(n)return j:Query(n,"references")end)
+bind("dex-snapshot",function(n)return j:Snapshots(n)end)
+bind("dex-watch",function(n)
+if n.operation=="start"then return k:Start(n)end
+if n.operation=="poll"then return k:Poll(n)end
+if n.operation=="stop"then return k:Stop(n)end
+error"Unknown Dex watch operation."
+end)
+local function dexAdapter()
+local n=getgenv().DexMCP
+assert(type(n)=="table"and n.Version==1,"Compatible Dex is not loaded. Run the updated Dex loader in this same executor.")
+assert(type(n.GetSelection)=="function"and type(n.GetStatus)=="function"and type(n.Reveal)=="function","Dex adapter is incomplete; reload the updated Dex loader.")
+assert(n.GetStatus().Ready==true,"Dex explorer is closed or still loading.")
+return n
+end
+bind("dex-selection",function(n)
+local o=dexAdapter()
+local p=o.GetSelection()
+assert(type(p)=="table","Dex returned an invalid selection.")
+local q=o.GetStatus()
+local r=math.max(#p,tonumber(q.SelectionCount)or#p)
+local s=math.min(#p,100)
+local t=math.clamp(math.floor(tonumber(n.offset)or 0),0,100)
+local u=math.clamp(math.floor(tonumber(n.limit)or 25),1,50)
+local v,w={},600
+local x=t
+while x<s and#v<u do
+local y,z=pcall(function()return i:Describe(p[x+1])end)
+if not y then z={unavailable=true,index=x+1}end
+local A=measure(z)
+if w+A>(n.maxChars or 20000)then
+if#v>0 then break end
+z={Handle=z.Handle,omitted=true,index=x+1,reason="output-budget; use dex-inspect with the Handle"}
+A=measure(z)
+end
+table.insert(v,z)
+w+=A
+x+=1
+end
+return{
+available=true,adapterVersion=o.Version,results=v,
+selectionCount=r,availableSelectionCount=s,
+selectionTruncated=q.SelectionTruncated==true or r>s,
+nextOffset=x<s and x or nil,
+note="Selection is live; paging is not atomic. Use returned Handles for exact identity.",
+}
+end)
+bind("dex-reveal",function(n)
+local o=dexAdapter()
+local p=i:Resolve(n.target)
+local q,r=o.Reveal(p)
+assert(q~=false,tostring(r or"Dex could not reveal that instance."))
+return{revealed=true,instance=i:Describe(p)}
+end)
+
+task.spawn(function()
+while l and g.Connected do
+task.wait(5)
+if l then j:Sweep()k:Sweep()end
+end
+end)
+return function()
+l=false
+k:Destroy()
+j:Destroy()
+if getgenv().RobloxMCPDex==m then getgenv().RobloxMCPDex=nil end
+end
+end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+
 return function(b,c)
 local d=b.ScriptMappingPipeline
 local e=b.PublishScriptMappingStatus
@@ -5781,7 +7364,7 @@ end)
 c:BindToTypeStructured("script-index-resync",function(j)
 return StartFresh"resync_started"
 end)
-end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=500
@@ -6059,13 +7642,13 @@ e=false
 if not h then error(i)end
 return i
 end)
-end end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 c:BindToTypeStructured("executor-capabilities",function(d)
 return b.RuntimeCapabilities:Probe()
 end)
-end end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -6344,7 +7927,7 @@ local h=e:List(g.cursor,g.limit,g.kind)
 h.registry=e:Stats()
 return h
 end)
-end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -6488,7 +8071,7 @@ nextCursor=(s or t<q)and t or nil,
 results=p,
 }
 end)
-end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
+end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -6687,7 +8270,7 @@ truncated=#k>#l,
 end
 error("Unknown runtime-actors operation: "..tostring(h))
 end)
-end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
+end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.GcExplorer
@@ -6715,7 +8298,7 @@ end)
 c:BindToTypeStructured("runtime-references",function(e)
 return d:References(e)
 end)
-end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
+end end function a.N():typeof(__modImpl())local b=a.cache.N if not b then b={c=__modImpl()}a.cache.N=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -6831,7 +8414,7 @@ p.operation=h
 p.completed=true
 return p
 end)
-end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
+end end function a.O():typeof(__modImpl())local b=a.cache.O if not b then b={c=__modImpl()}a.cache.O=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -7082,7 +8665,7 @@ if h.action=="click-detector"then return FireDetector(h)end
 if h.action=="touch"then return FireTouch(h)end
 error("Unsupported input action: "..tostring(h.action))
 end)
-end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
+end end function a.P():typeof(__modImpl())local b=a.cache.P if not b then b={c=__modImpl()}a.cache.P=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 local c=a.x()
@@ -7549,7 +9132,7 @@ return WaitForRemote(w)
 end
 error("Unsupported wait mode: "..tostring(w.mode))
 end)
-end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end do local function __modImpl()
+end end function a.Q():typeof(__modImpl())local b=a.cache.Q if not b then b={c=__modImpl()}a.cache.Q=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CreateBridge
@@ -7610,9 +9193,6 @@ local p={a.u()
 ,a.A()
 ,a.B()
 ,a.C()
-,a.D()
-,a.E()
-,a.F()
 ,a.G()
 ,a.H()
 ,a.I()
@@ -7620,20 +9200,36 @@ local p={a.u()
 ,a.K()
 ,a.L()
 ,a.M()
+,a.N()
+,a.O()
+,a.P()
+,a.Q()
 ,
 }
-for q,r in p do
-r(b,n)
+local q={}
+local r,s=pcall(function()
+for r,s in p do
+local t=s(b,n)
+if type(t)=="function"then table.insert(q,t)end
 end
-
 n:WaitForDisconnect()
+end)
+for t=#q,1,-1 do pcall(q[t])end
 
 if e.bridge==n then
 e.bridge=nil
 end
+if not r then
+n.Connected=false
+for t,u in{n.AliveThread,n.PollThread}do
+pcall(task.cancel,u)
+end
+pcall(function()if n.WebSocket then n.WebSocket:Close()end end)
+error(s,0)
+end
 task.wait(1)
 end
-end end function a.N():typeof(__modImpl())local b=a.cache.N if not b then b={c=__modImpl()}a.cache.N=b end return b.c end end end
+end end function a.R():typeof(__modImpl())local b=a.cache.R if not b then b={c=__modImpl()}a.cache.R=b end return b.c end end end
 
 
 
@@ -8094,7 +9690,7 @@ end
 
 getgenv().MCP_Loaded=true
 getgenv().MCP_Loading=nil
-local ag,ah=pcall(function()a.N()
+local ag,ah=pcall(function()a.R()
 {
 CreateBridge=J,
 WaitForBridgeClientId=WaitForBridgeClientId,

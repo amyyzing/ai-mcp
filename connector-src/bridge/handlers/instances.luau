@@ -98,13 +98,24 @@ local MarketplaceService = context.MarketplaceService
         local MAX_TREE_NODES = 300
         local nodeBudget = MAX_TREE_NODES
         local budgetHit = false
+        local visitedWork = 0
+        local workLimited = false
+        local deadline = os.clock() + 0.02
+        local function visit()
+            if visitedWork >= 5000 or os.clock() >= deadline then
+                workLimited = true
+                return false
+            end
+            visitedWork += 1
+            return true
+        end
 
         if summaryOnly then
             local classCounts = {}
             local visited = 0
             local matched = 0
             local traversalLimited = false
-            local MAX_SUMMARY_VISITED = 20000
+            local MAX_SUMMARY_VISITED = 5000
 
             local function walk(instance, depth)
                 if depth > maxDepth or traversalLimited then
@@ -112,7 +123,7 @@ local MarketplaceService = context.MarketplaceService
                 end
 
                 for _, child in instance:GetChildren() do
-                    if visited >= MAX_SUMMARY_VISITED then
+                    if visited >= MAX_SUMMARY_VISITED or not visit() then
                         traversalLimited = true
                         return
                     end
@@ -143,6 +154,7 @@ local MarketplaceService = context.MarketplaceService
                 ClassCounts = classCounts,
                 TraversalLimited = traversalLimited,
                 TraversalLimit = MAX_SUMMARY_VISITED,
+                ContinuationHint = traversalLimited and "Use dex-query for resumable, budgeted traversal." or nil,
             }
         end
 
@@ -156,8 +168,13 @@ local MarketplaceService = context.MarketplaceService
             local shown = 0
             local total = #children
 
+            if depth >= maxDepth then
+                return { Name = instance.Name, ClassName = instance.ClassName, ChildCount = total, Children = {}, DepthLimited = total > 0 }
+            end
+
             for _, child in children do
                 if shown >= maxChildren then break end
+                if not visit() then break end
                 if nodeBudget <= 0 then
                     budgetHit = true
                     break
@@ -205,8 +222,14 @@ local MarketplaceService = context.MarketplaceService
         end
 
         local tree = buildTree(rootInstance, 0)
+        if typeof(tree) == "table" then
+            tree.VisitedDescendants = visitedWork
+            tree.TraversalLimited = workLimited
+        end
         if budgetHit and typeof(tree) == "table" then
-            tree.Note = "Output capped at " .. MAX_TREE_NODES .. " nodes. Narrow with classFilter, lower maxDepth, or summaryOnly=true."
+            tree.Note = "Output capped at " .. MAX_TREE_NODES .. " nodes. Use dex-query to continue a bounded scan."
+        elseif workLimited and typeof(tree) == "table" then
+            tree.Note = "Traversal work/time budget reached, including unmatched nodes. Use dex-query for continuation."
         end
         return tree
     end)
