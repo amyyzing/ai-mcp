@@ -1,40 +1,64 @@
 # luraph-devirtualiser
 
-Standalone Railway-hosted interface to the real **luau-vmp-deobf** engine. Raycast-inspired charcoal/coral colours, liquid-glass controls, ambient glowing particles, responsive dual editors, file upload, cancellable jobs, real stage reporting, source previews, artifact downloads, and complete exports.
+A Railway-hosted, ephemeral Lua/Luau recovery workbench. Raycast-inspired charcoal/coral colours, translucent glass panels, animated blurred particles, responsive editors, real progress, cancellation and complete artifact downloads.
 
-This branch is an independent website. AI-MCP's main branch is unchanged.
+## Recovery providers
 
-## Deploy
+- **Luraph:** pinned `luau-vmp-deobf` 0.5.2, commit `5313d53165d64207e44be533358f2334c0657ee8`. The upstream capture/finalisation pipeline stays intact and third-party decompiler uploads stay disabled.
+- **Local analysis adapter:** parses its supported Lua/Luau syntax, evaluates closed constant-array decoders, folds literal arithmetic, and emits the complete analysis source. Supports structures encountered in Prometheus-style/WeAreDevs wrappers; the banner is evidence, not proof of compatibility.
+- **Closed-model specialization:** in Full recovery, a bounded Python evaluator can derive scalar print/warn operations and return values. A candidate is promoted only after the original and candidate match under three native Luau runs. This is **model-specific partial reconstruction, NOT a universal all-path decompiler**. Global mutations, entry arguments, timings, diagnostic behaviour, unexecuted branches and Roblox interactions are not proved equivalent. Missing or unsupported APIs stop specialization. A disclosed scratch-global absence profile may be used for recognized diagnostic scaffolding.
+- **Official native validation:** Luau **0.739** `luau` and `luau-compile`, downloaded from the official release and SHA256-verified. Lune 0.10.5 remains installed because the Luraph engine requires it; the new adapter uses the official CLI instead of Lune or a Lua 5.x approximation.
 
-Docker builds Python 3.12, FastAPI, the recovery engine pinned at `5313d53165d64207e44be533358f2334c0657ee8`, and checksum-verified Lune 0.10.5. The engine's MIT notice is included at `/app/ENGINE-LICENSE`.
+Official archive SHA256: `8a9b4b381021722c82d6e6cda0964b5c9e7f354ec1035fcd8b657acc22e49247`.
 
-Deploy this branch in a separate Railway service. The Docker image serves UI and API on `$PORT`; healthcheck `/health`. Use **one replica**, since jobs are held in process memory. No secrets or external worker URL are required.
+## What the outputs mean
 
-Local: install the pinned engine and Lune, `pip install -r requirements.txt`, then `python server.py`. Without the engine the UI reports unavailable; it never fabricates results.
+`program.application.luau` is a native-verified **observed application view**. It is partial and accompanied by scope/assumptions. `program.analysis.luau` preserves the full parsed program with decoded constants and literal arithmetic; VM dispatch remains, and formatting can affect anti-tamper checks. `candidate.unverified.luau` is never silently promoted. `program.source.luau` is non-VM source passed through and compile-checked, not devirtualized or executed. Existing Luraph embedded/structural/instruction artifacts retain their distinct labels. A clean compile is not a semantic-equivalence proof.
 
-## Data and limits
+Reports include input hashes, decoded constants, original-versus-candidate traces, runtime version, seeds, unresolved globals and native validation failures. The adapter has no parameter for a desired/expected output.
 
-- 4 MiB source; 30–600 seconds per job; one worker; four active/queued jobs.
-- One active job per browser session; ten submissions per IP per ten minutes. Lightweight quotas are not abuse-proof identity checks.
-- 32 MiB output per job; 96 MiB total retained outputs; 30-minute TTL and capacity eviction.
-- Source uses a temporary server work directory removed after the job. Outputs remain in RAM. Restarts/redeploys clear them.
-- No browser localStorage/IndexedDB source storage. An opaque HTTP-only session cookie restricts job access.
-- No lua.expert uploads. Child processes inherit an allowlisted environment, not deployment secrets. CPU, address-space, file-size, file-descriptor and wall-clock limits apply; cancellation kills the process group.
-- The upstream parser/bootstrap sandbox is not a claim of a hardened hostile-code boundary. Use stronger kernel/container isolation before operating a high-volume public service.
-- No raw source is logged to the application console. Per-job diagnostics may contain source-derived data and are restricted to the owning session.
+## Running
 
-## Scope
+Build and run with Docker on Linux x86_64:
 
-Supports the pinned engine's supported Luraph v14.x loader families. Not a universal WeAreDevs, arbitrary-VM, or unknown-version deobfuscator. Full recovery permits the bounded bootstrap decoder; strict capture can stop at an intermediate loader. The engine does not invoke the final application. Compilation is not proof of equivalence; original names/comments are not guaranteed.
+```sh
+docker build -t luraph-devirtualiser .
+docker run --rm -p 8080:8080 luraph-devirtualiser
+```
 
-This version exposes the existing engine. It does **not** implement the proposed advanced SSA/closure-reconstruction pipeline.
+The official Ubuntu release bundled here is x86_64. Other architectures require a separately verified Luau build; this image fails explicitly rather than installing an incompatible binary.
 
-## API
+Railway uses `railway.json`, the root Dockerfile, `$PORT`, and `/api/health`. Keep one replica: the queue and artifact store are process-local.
 
-`GET /api/health`, `POST /api/jobs` (source, name, mode, timeout), `GET /api/jobs/{id}`, `DELETE /api/jobs/{id}`, `GET /api/jobs/{id}/artifact?name=...`, `GET /api/jobs/{id}/artifact?name=...&download=true`, `GET /api/jobs/{id}/download`.
+For local tests, install `requirements-dev.txt` and put official `luau`, `luau-compile`, plus Lune on PATH. Install the pinned recovery engine for end-to-end Luraph tests. Run:
 
-Establish a browser session with `/` or `/api/health` before submitting JSON. Previews are capped at 160,000 characters; downloads preserve retained bytes. Artifacts include SHA-256 metadata.
+```sh
+python -m unittest discover -s tests -v
+python smoke.py
+```
 
-## Verification
+Native tests must not be reported as passed when skipped. Synthetic tests are owned fixtures, not a claim of coverage for all obfuscator releases. User submissions are not checked into the repository.
 
-`pip install -r requirements-dev.txt && python -m unittest discover -s tests -v` runs API tests with an explicitly mocked recovery subprocess. Docker additionally runs `smoke.py`: actual engine instruction lifting and native Lune compilation of an owned fixture, plus actual CLI rejection of unsupported input. Neither test claims complete real-world Luraph corpus compatibility. UI tests cover desktop/mobile layout, settings, error/result rendering and source escaping.
+## Limits and storage
+
+4 MB UTF-8 input; one active worker with four pending jobs; 30–600 second job timeout; per-process memory/CPU/file limits; 32 MB retained artifacts per job; 96 MB global retention; 30-minute maximum result retention. Cancellation terminates the process group. Results are scoped to an HttpOnly browser-session cookie. Jobs use temporary server files; retained results live in server memory and are evicted on capacity, expiry or restart. No browser local storage and no executor workspace writes.
+
+The native verification harness gives submissions an explicit pure-library environment. No require, filesystem, network, OS commands, clipboard or Roblox services are exposed. Original code is executed only within the disclosed closed-model verification path; Luraph continues using its separate disabled-final-payload capture policy. Static/strict mode skips application specialization. Unsupported syntax and unknown custom VMs can still fail or produce partial analysis; universal recovery is not claimed.
+
+## HTTP interface
+
+- `GET /api/health` — exact runtime/adapter status.
+- `POST /api/jobs` — source/name/mode/timeout; mode is `sandboxed` or `strict`.
+- `GET /api/jobs/{id}` — progress, quality, warnings and artifact manifest.
+- `DELETE /api/jobs/{id}` — cancel.
+- `GET /api/jobs/{id}/artifact?name=...` — bounded preview.
+- Add `download=true` for the entire artifact; preview truncation never discards retained bytes.
+- `GET /api/jobs/{id}/download` — full retained artifact archive.
+
+Maintain the same cookie across requests. A different browser session cannot retrieve another session's job.
+
+## Attribution
+
+Luau: https://github.com/luau-lang/luau — MIT License (included in image as LUAU-LICENSE).
+Luraph engine: https://github.com/binxgtl/luau-vmp-deobf — upstream license included as ENGINE-LICENSE.
+Lune: https://github.com/lune-org/lune.
