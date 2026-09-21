@@ -1,4 +1,4 @@
-"""Set operating-system resource limits, then launch the real pinned engine."""
+"""Set operating-system resource limits, then launch the selected recovery adapter."""
 import os
 import resource
 import sys
@@ -10,5 +10,5 @@ resource.setrlimit(resource.RLIMIT_AS, (1536 * 1024**2, 1536 * 1024**2))
 resource.setrlimit(resource.RLIMIT_FSIZE, (64 * 1024**2, 64 * 1024**2))
 resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-os.execv(sys.executable, [sys.executable, "-m", "luauvmp", "luraph-full", source,
-                         "-o", output, "--force", "--no-lua-expert", "--timeout", str(seconds)])
+from recovery import main
+main(source, output, seconds)
