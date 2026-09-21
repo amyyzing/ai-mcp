@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101013">
+  <meta name="description" content="A focused workspace for recovering source from supported Luraph-protected Lua and Luau. Inspect real artifacts, follow progress, and export your results.">
+  <title>luraph-devirtualiser — See through the noise.</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8m4 0h4M4 17h3m4 0h9"/><circle cx="14" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9zM14 2v7h7M7 14h10M7 18h7"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM20 1v4m-2-2h4"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 8a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 16h.01"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8zm-9 10 9 5 9-5M3 18l9 5 9-5"/></symbol>
+</defs></svg>
+<div class="atmosphere" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="orb orb-three"></div><div class="orb orb-four"></div><div id="particles"></div><div class="grain"></div></div>
+<div class="page">
+<header class="header">
+  <a href="/" class="brand" aria-label="luraph-devirtualiser home"><span class="brand-mark"><svg><use href="#i-code"/></svg></span><span>luraph<span class="brand-muted">-devirtualiser</span></span></a>
+  <nav class="navigation" aria-label="Main navigation"><span class="nav-active">Workbench</span><button id="how-button" class="nav-link">How it works <svg><use href="#i-arrow"/></svg></button></nav>
+  <div class="header-right"><button id="motion-button" class="icon-button motion" aria-label="Pause background animation" title="Pause background animation"><svg><use href="#i-spark"/></svg></button><span class="engine-status" id="engine-status"><span class="status-dot checking"></span><span>Connecting</span></span></div>
+</header>
+<main>
+<section class="hero">
+  <div class="eyebrow"><span class="eyebrow-dot"></span> CLARITY, UNDER THE HOOD <span class="eyebrow-line"></span></div>
+  <h1>See through <span>the noise.</span></h1>
+  <p>Obfuscated in. Readable out.<br class="mobile-break"> A precise workspace for your Lua &amp; Luau.</p>
+  <div class="hero-badges"><span><svg><use href="#i-layers"/></svg>Luraph v14.x</span><span><svg><use href="#i-lock"/></svg>No third-party uploads</span><span><svg><use href="#i-code"/></svg>Real recovery engine</span></div>
+</section>
+<section class="workbench glass" id="workbench" aria-label="Devirtualisation workspace">
+  <div class="bench-toolbar">
+    <div class="workspace-label"><span class="live-square"></span> Recovery workspace <span class="version-tag">01</span></div>
+    <div class="bench-actions"><span class="session-label">Ephemeral session</span><button id="settings-button" class="quiet-button" aria-expanded="false"><svg><use href="#i-sliders"/></svg>Options</button><button id="expand-button" class="icon-button" title="Expand workspace" aria-label="Expand workspace"><svg><use href="#i-expand"/></svg></button></div>
+  </div>
+  <div class="settings-panel" id="settings-panel" hidden>
+    <div><span class="settings-title">Capture mode</span><div class="segmented" role="group" aria-label="Capture mode"><button data-mode="sandboxed" class="selected" aria-pressed="true">Full recovery</button><button data-mode="strict" aria-pressed="false">Strict capture</button></div></div>
+    <label class="timeout-label">Time limit<select id="timeout"><option value="60">60 seconds</option><option value="180" selected>180 seconds</option><option value="300">300 seconds</option><option value="600">600 seconds</option></select></label>
+    <p id="mode-description">Allows the bounded bootstrap decoder. The final application is never invoked by the recovery pipeline.</p>
+  </div>
+  <div class="editor-grid">
+    <section class="editor-panel input-panel" id="drop-zone">
+      <div class="editor-toolbar"><div class="editor-title"><svg><use href="#i-code"/></svg><span>Input</span><span class="file-pill" id="file-label">protected.luau</span></div><div class="editor-tools"><button class="quiet-button" id="paste-button" title="Paste from clipboard"><svg><use href="#i-copy"/></svg>Paste</button><button class="icon-button" id="clear-button" title="Clear input" aria-label="Clear input"><svg><use href="#i-close"/></svg></button></div></div>
+      <div class="input-code-wrap"><div class="gutter" id="input-gutter" aria-hidden="true">1</div><textarea id="source" aria-label="Obfuscated Lua or Luau source" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" wrap="off" placeholder="-- Paste your obfuscated code here&#10;-- or drop a .lua / .luau file into this editor."></textarea><div class="drop-overlay" id="drop-overlay"><svg><use href="#i-upload"/></svg><span>Drop your source here</span><small>Lua · Luau · Text · up to 4 MB</small></div></div>
+      <div class="editor-footer"><button class="quiet-button" id="upload-button"><svg><use href="#i-upload"/></svg>Upload file</button><span id="input-stats">0 characters <span>·</span> UTF-8</span><input type="file" accept=".lua,.luau,.txt,.md" id="file-input" hidden></div>
+    </section>
+    <section class="editor-panel output-panel">
+      <div class="editor-toolbar"><div class="editor-title"><svg><use href="#i-file"/></svg><span>Output</span><span class="output-badge" id="output-badge">Awaiting input</span></div><div class="editor-tools"><button class="icon-button" id="copy-button" title="Copy selected artifact" aria-label="Copy selected artifact" disabled><svg><use href="#i-copy"/></svg></button><button class="icon-button" id="download-button" title="Download selected artifact" aria-label="Download selected artifact" disabled><svg><use href="#i-download"/></svg></button></div></div>
+      <div class="output-body">
+        <div class="output-empty" id="output-empty"><div class="recovery-symbol"><div></div><span><svg><use href="#i-layers"/></svg></span></div><h2>Your code, uncovered.</h2><p>Recovered source will appear here.<br>No guesswork. No fabricated output.</p><span class="empty-hint">READY WHEN YOU ARE <svg><use href="#i-arrow"/></svg></span></div>
+        <div class="running-state" id="running-state" hidden><div class="scan-icon"><svg><use href="#i-code"/></svg></div><h2 id="running-title">Preparing recovery</h2><p id="running-description">Waiting for the engine…</p><div class="stage-track"><span id="stage-track-fill"></span></div><small>Progress follows actual engine stages, not an estimated timer.</small></div>
+        <div class="error-state" id="error-state" hidden><div class="error-icon">!</div><h2 id="error-title">Recovery stopped</h2><p id="error-message"></p><button class="quiet-button" id="error-help">Check supported inputs <svg><use href="#i-arrow"/></svg></button></div>
+        <pre id="output-code" class="output-code" tabindex="0" aria-label="Recovered source" hidden></pre>
+      </div>
+      <div class="editor-footer"><span class="output-footnote" id="output-note"><span class="small-dot"></span>Waiting for a recovery job</span><label class="artifact-picker" id="artifact-picker" hidden><span class="sr-only">Select output artifact</span><select id="artifact-select"></select></label><span id="output-size">—</span></div>
+    </section>
+  </div>
+  <div class="action-bar"><div class="action-info"><svg><use href="#i-lock"/></svg><span>Your code is processed on this server.<br><small>Results expire after 30 minutes. Nothing is saved in your browser.</small></span></div><div class="run-actions"><span class="keyboard-hint"><kbd>Ctrl</kbd><kbd>↵</kbd></span><button id="cancel-button" class="secondary-button" hidden>Cancel</button><button id="run-button" class="primary-button" disabled><svg><use href="#i-spark"/></svg><span>Devirtualise</span><svg class="run-arrow"><use href="#i-arrow"/></svg></button></div></div>
+</section>
+<section class="job-report glass" id="job-report" hidden aria-label="Recovery report"><div class="report-heading"><h2><span class="small-dot"></span> Recovery report</h2><div><span id="elapsed">0.0 s</span><button id="export-all" class="quiet-button" disabled><svg><use href="#i-download"/></svg>Export all</button></div></div><div class="report-metrics" id="report-metrics"></div><div class="warnings" id="warnings" hidden></div><details id="events-details"><summary>Pipeline activity <span id="event-count">0 events</span></summary><ol id="events"></ol></details></section>
+<div class="below-workbench"><span><span class="small-dot"></span> Built for supported Luraph loaders. Not a universal deobfuscator.</span><button class="text-link" id="limits-button">Know the limits <svg><use href="#i-arrow"/></svg></button></div>
+<section class="features" aria-label="Recovery features"><article><span class="feature-icon"><svg><use href="#i-layers"/></svg></span><div><h3>Beyond the wrapper</h3><p>Unpack layers and recover the underlying program structure.</p></div><span class="feature-number">01</span></article><article><span class="feature-icon"><svg><use href="#i-check"/></svg></span><div><h3>Evidence, not promises</h3><p>See compile checks, unresolved instructions, and capture details.</p></div><span class="feature-number">02</span></article><article><span class="feature-icon"><svg><use href="#i-download"/></svg></span><div><h3>Keep the whole picture</h3><p>Export source, instruction views, and the engine’s analysis reports.</p></div><span class="feature-number">03</span></article></section>
+</main>
+<footer><span class="footer-brand"><span class="mini-mark">/</span> luraph-devirtualiser</span><span>Powered by <a href="https://github.com/binxgtl/luau-vmp-deobf" target="_blank" rel="noopener noreferrer">luau-vmp-deobf <svg><use href="#i-arrow"/></svg></a></span><span class="footer-note">A little less opaque.</span></footer>
+</div>
+<dialog id="help-dialog"><div class="dialog-top"><span class="brand-mark"><svg><use href="#i-layers"/></svg></span><button class="icon-button" id="close-help" aria-label="Close information"><svg><use href="#i-close"/></svg></button></div><span class="eyebrow">UNDER THE HOOD</span><h2>Recovery, with context.</h2><p>This is a real interface to the pinned <strong>luau-vmp-deobf 0.5.2</strong> engine, not an AI-generated approximation of your code.</p><div class="help-section"><h3>What is supported?</h3><p>Supported Luraph v14.x loader families, including the upstream v14.7 regression families. A version label alone does not guarantee compatibility. Ordinary Luau and other obfuscators, including WeAreDevs, may be rejected.</p></div><div class="help-section"><h3>Full recovery or strict capture?</h3><p>Full recovery permits a bounded, isolated bootstrap decoder to recover staged data. Strict capture prevents that decoder stage and can stop at an intermediate loader. The pipeline does not invoke the final application.</p></div><div class="help-section"><h3>What does a result prove?</h3><p>Decoded source is retained when present; otherwise the engine emits structural Luau and an instruction view. Compilation does not prove behavioral equivalence. Original names and comments cannot be promised. This release does not implement the proposed advanced restructuring pipeline.</p></div><div class="help-section"><h3>Where does my code go?</h3><p>Only to this Railway service. Remote lua.expert uploads are disabled. Job files are temporary; results stay in server memory for up to 30 minutes, subject to capacity. Refreshing the page clears this workspace. Deployments also clear results. Use code you own or are authorised to inspect.</p></div><div class="help-bottom"><span>4 MB input · 10-minute maximum runtime</span><button id="help-done" class="primary-button">Back to workbench <svg><use href="#i-arrow"/></svg></button></div></dialog>
+<div id="toast" class="toast glass" role="status" aria-live="polite" hidden></div>
+</body></html>

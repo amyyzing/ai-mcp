@@ -1,28 +1,6 @@
-# Build artifacts
-dist/*
-
-# Local deployment credentials stay outside source control.
+__pycache__/
+*.pyc
+.pytest_cache/
 .env
 .env.*
-!.env.example
-
-# node modules
-node_modules/*
-__pycache__/
-*.py[cod]
-.roblox-mcp-current.json
-.roblox-mcp-releases/
-.roblox-mcp-update-*
-.roblox-mcp-update-backup-*
-
-# pnpm store
-.pnpm-store/*
-
-# Cursor
-.cursor/*
-
-# Cursor
-.cursor/*
-
-# macOS
-.DS_Store
+.venv/

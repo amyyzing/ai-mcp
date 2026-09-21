@@ -1,7 +1,0 @@
-{
-  "bundle": {
-    "require_mode": "path",
-    "modules_identifier": "__MCP_CONNECTOR_MODULES"
-  },
-  "generator": "retain_lines"
-}
