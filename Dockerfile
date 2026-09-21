@@ -19,7 +19,8 @@ RUN test "${TARGETARCH}" = amd64 \
  && echo "8a9b4b381021722c82d6e6cda0964b5c9e7f354ec1035fcd8b657acc22e49247  /tmp/luau.zip" | sha256sum --check --strict \
  && unzip /tmp/luau.zip -d /tmp/luau \
  && install -m 0755 /tmp/luau/luau /usr/local/bin/luau \
- && install -m 0755 /tmp/luau/luau-compile /usr/local/bin/luau-compile
+ && install -m 0755 /tmp/luau/luau-compile /usr/local/bin/luau-compile \
+ && install -m 0755 /tmp/luau/luau-ast /usr/local/bin/luau-ast
 RUN curl --fail --location --max-time 30 "https://raw.githubusercontent.com/luau-lang/luau/${LUAU_VERSION}/LICENSE.txt" -o /build/LUAU-LICENSE
 RUN curl --fail --location --max-time 30 "https://raw.githubusercontent.com/binxgtl/luau-vmp-deobf/${ENGINE_COMMIT}/LICENSE" -o /build/ENGINE-LICENSE
 FROM python:3.12-slim
@@ -29,13 +30,14 @@ RUN python -m pip install --no-cache-dir /wheels/* && rm -rf /wheels
 COPY --from=builder /usr/local/bin/lune /usr/local/bin/lune
 COPY --from=builder /usr/local/bin/luau /usr/local/bin/luau
 COPY --from=builder /usr/local/bin/luau-compile /usr/local/bin/luau-compile
+COPY --from=builder /usr/local/bin/luau-ast /usr/local/bin/luau-ast
 WORKDIR /app
 COPY --from=builder /build/ENGINE-LICENSE /app/ENGINE-LICENSE
 COPY --from=builder /build/LUAU-LICENSE /app/LUAU-LICENSE
 COPY --chown=app:app *.py ./
 COPY --chown=app:app tests ./tests
 COPY --chown=app:app static ./static
-RUN python -m luauvmp --help >/dev/null && lune --version && luau --help >/dev/null && luau-compile --help >/dev/null && python smoke.py && python -m unittest discover -s tests -p test_recovery.py
+RUN python -m luauvmp --help >/dev/null && lune --version && luau --help >/dev/null && luau-compile --help >/dev/null && python smoke.py && python -m unittest discover -s tests -p test_recovery.py && python -m unittest discover -s tests -p test_official_language.py -v
 ENV PORT=8080 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER app
 EXPOSE 8080
