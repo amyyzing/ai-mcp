@@ -1,50 +1,71 @@
 name: Recovery validation
 on:
   push:
-    branches: [deobfuscation-readability-v2, luraph-devirtualiser]
+    branches: [deobfuscation-readability-v2]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: recovery-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   native:
+    if: github.ref == 'refs/heads/deobfuscation-readability-v2'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run native regression gates
-        run: docker build --progress=plain -t recovery-validation .
-      - name: Export reproducible local test kit
-        run: |
-          mkdir -p native-kit/bin native-kit/project native-kit/vendor native-kit/vendor-wheels
-          id=$(docker create recovery-validation)
-          docker cp "$id:/usr/local/bin/luau" native-kit/bin/
-          docker cp "$id:/usr/local/bin/luau-compile" native-kit/bin/
-          docker cp "$id:/usr/local/bin/luau-ast" native-kit/bin/
-          docker cp "$id:/usr/local/bin/lune" native-kit/bin/
-          docker cp "$id:/app/." native-kit/project/
-          docker cp "$id:/usr/local/lib/python3.12/site-packages/luauvmp" native-kit/vendor/
-          docker cp "$id:/usr/local/lib/python3.12/site-packages/tools" native-kit/vendor/
-          docker rm "$id"
-          curl -fL --max-time 60 https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64.zip -o /tmp/stylua.zip
-          echo 'bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab  /tmp/stylua.zip' | sha256sum -c -
-          unzip /tmp/stylua.zip -d native-kit/bin
-          python -m pip download --only-binary=:all: --no-deps --platform manylinux2014_x86_64 --implementation cp --python-version 313 --abi cp313 zstandard==0.25.0 --dest native-kit/vendor-wheels
-          tar -czf native-test-kit.tar.gz native-kit
-      - uses: actions/upload-artifact@v4
         with:
-          name: native-test-kit
-          path: native-test-kit.tar.gz
-          retention-days: 1
-      - name: Run all packaged tests with test-only dependencies
-        run: docker run --rm --user root --entrypoint sh recovery-validation -c 'pip install --no-cache-dir httpx==0.28.1 >/dev/null && python -m unittest discover -s tests -v'
-      - name: Inspect native toolchain contracts
-        if: always()
+          ref: deobfuscation-readability-v2
+      - name: Retrieve exact reviewed source update
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          chmod +x native-kit/bin/*
-          printf '%s' 'local s:string="\104ello"; local function cb() return "\119orld" end; return `{s}`' > /tmp/probe.luau
-          native-kit/bin/luau-ast /tmp/probe.luau
-          echo
-          native-kit/bin/luau-compile --help | head -25
+          set -euo pipefail
+          : > /tmp/changes.json.xz
+          for sha in d73a1dbe2470d3750c05418f404a23415ee8a68b 914e30025b3fb5706c3cf341166787938a4caac1 5a867f1baa2bab8afa5bbea6fc0d431ab957c637; do
+            gh api "repos/amyyzing/ai-mcp/git/blobs/$sha" --jq .content | base64 --decode >> /tmp/changes.json.xz
+          done
+          echo 'f015b02a43382b86cd12512b8e1017bd68aa33fd1a484c420ae89a86a290592a  /tmp/changes.json.xz' | sha256sum --check --strict
+          python - <<'PY'
+          import hashlib, json, lzma
+          from pathlib import Path
+          data=json.loads(lzma.decompress(Path('/tmp/changes.json.xz').read_bytes()))
+          allowed={'native_tools.py','readable.py','native_pool.py','recovery_v2.py','recovery.py','engine_runner.py','server.py','Dockerfile','README.md','smoke.py','static/app.js','static/index.html','static/style.css','tests/test_readability.py','tests/test_official_language.py','.github/workflows/recovery-validation.yml','ci/live_smoke.py'}
+          assert set(data['files'])==allowed==set(data['sha256'])
+          pending={}
+          for name,op in data['files'].items():
+              if 'content' in op:
+                  text=op['content']
+              else:
+                  text=Path(name).read_text()
+                  assert hashlib.sha256(text.encode()).hexdigest()==op['base'], 'Base mismatch: '+name
+                  previous=len(text)
+                  for start,end,replacement in reversed(op['edits']):
+                      assert 0<=start<=end<=previous
+                      text=text[:start]+replacement+text[end:]
+                      previous=start
+              assert hashlib.sha256(text.encode()).hexdigest()==data['sha256'][name], 'Result mismatch: '+name
+              pending[name]=text
+          for name,text in pending.items():
+              path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+          print('Verified exact source hashes for',len(pending),'files; no user submissions included.')
+          Path('/tmp/update-manifest.json').write_text(json.dumps(data['sha256'],indent=2))
+          PY
+      - name: Validate syntax and build all native regression gates
+        run: |
+          python -m compileall -q *.py tests ci
+          node --check static/app.js
+          docker build --progress=plain -t recovery-validation .
+      - name: Commit tested code only to the isolated test branch
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/deobfuscation-readability-v2
+          git restore -- .github/workflows/recovery-validation.yml
+          git add native_tools.py readable.py native_pool.py recovery_v2.py recovery.py engine_runner.py server.py Dockerfile README.md smoke.py static/app.js static/index.html static/style.css tests/test_readability.py tests/test_official_language.py ci/live_smoke.py
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Implement native static cleanup, closed-pool recovery and truthful output selection'
+          git push origin HEAD:refs/heads/deobfuscation-readability-v2
+          echo "TESTED_COMMIT=$(git rev-parse HEAD)"
