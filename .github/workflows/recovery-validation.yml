@@ -1,0 +1,54 @@
+name: Recovery validation
+on:
+  push:
+    branches: [luraph-recovery-fixes-20260922, luraph-devirtualiser]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned native runtimes and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/recovery-tools /tmp/recovery-wheels
+          curl --fail --location --retry 3 --max-time 120 https://github.com/luau-lang/luau/releases/download/0.739/luau-ubuntu.zip -o /tmp/luau.zip
+          echo '8a9b4b381021722c82d6e6cda0964b5c9e7f354ec1035fcd8b657acc22e49247  /tmp/luau.zip' | sha256sum -c -
+          unzip -q /tmp/luau.zip -d /tmp/recovery-tools
+          curl --fail --location --retry 3 --max-time 120 https://github.com/lune-org/lune/releases/download/v0.10.5/lune-0.10.5-linux-x86_64.zip -o /tmp/lune.zip
+          echo '1fb5dee6a1afa1d300092805c6e660fe06144d29dd68c45cf6956f040667f791  /tmp/lune.zip' | sha256sum -c -
+          unzip -q /tmp/lune.zip -d /tmp/recovery-tools
+          chmod +x /tmp/recovery-tools/*
+          echo /tmp/recovery-tools >> "$GITHUB_PATH"
+          python -m pip wheel --wheel-dir /tmp/recovery-wheels -r requirements-dev.txt
+          python -m pip wheel --no-deps --wheel-dir /tmp/recovery-wheels 'git+https://github.com/binxgtl/luau-vmp-deobf.git@5313d53165d64207e44be533358f2334c0657ee8'
+          python -m pip install /tmp/recovery-wheels/*
+      - name: Native regression tests
+        run: |
+          python -m unittest discover -s tests -v
+          python smoke.py
+      - name: Package reproducible diagnostic workspace
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/recovery-bundle/source /tmp/recovery-bundle/tools /tmp/recovery-bundle/wheels
+          git archive HEAD | tar -x -C /tmp/recovery-bundle/source
+          cp -a /tmp/recovery-tools/. /tmp/recovery-bundle/tools/ || true
+          cp -a /tmp/recovery-wheels/. /tmp/recovery-bundle/wheels/ || true
+          printf '%s\n' "$GITHUB_SHA" > /tmp/recovery-bundle/SOURCE_COMMIT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovery-diagnostic-workspace
+          path: /tmp/recovery-bundle/
+          retention-days: 1
+          if-no-files-found: error
