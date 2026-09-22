@@ -9,13 +9,17 @@ jobs:
   native:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - name: Install pinned native runtimes and dependencies
         shell: bash
         run: |
@@ -27,6 +31,9 @@ jobs:
           curl --fail --location --retry 3 --max-time 120 https://github.com/lune-org/lune/releases/download/v0.10.5/lune-0.10.5-linux-x86_64.zip -o /tmp/lune.zip
           echo '1fb5dee6a1afa1d300092805c6e660fe06144d29dd68c45cf6956f040667f791  /tmp/lune.zip' | sha256sum -c -
           unzip -q /tmp/lune.zip -d /tmp/recovery-tools
+          curl --fail --location --retry 3 --max-time 120 https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64-musl.zip -o /tmp/stylua.zip
+          echo 'ca6f1cf52eaf69e6632b81acef9c197aa24b85eb30d2455a35e7dbe28ae77c72  /tmp/stylua.zip' | sha256sum -c -
+          unzip -q /tmp/stylua.zip -d /tmp/recovery-tools
           chmod +x /tmp/recovery-tools/*
           echo /tmp/recovery-tools >> "$GITHUB_PATH"
           python -m pip wheel --wheel-dir /tmp/recovery-wheels -r requirements-dev.txt
@@ -48,7 +55,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: recovery-diagnostic-workspace
+          name: recovery-diagnostic-workspace-${{ matrix.python }}
           path: /tmp/recovery-bundle/
           retention-days: 1
           if-no-files-found: error
