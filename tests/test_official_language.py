@@ -81,7 +81,8 @@ class OfficialLanguageTests(unittest.TestCase):
         result=subprocess.run([sys.executable,str(ROOT/'engine_runner.py'),str(path),str(self.root/'routed'),'20'],capture_output=True,timeout=25,env={**os.environ,'LUAUVMP_STRICT_CAPTURE':'1'})
         self.assertEqual(result.returncode,0,result.stdout.decode()+result.stderr.decode())
         report=json.loads((self.root/'routed/pipeline.json').read_text())
-        self.assertEqual(report['family'],'luau-native-fallback')
+        self.assertEqual(report['family'],'luau-source')
+        self.assertEqual(report['adapter'],'native-recovery-2.0.0')
         self.assertFalse(report['final_payload_executed'])
 
     def test_fallback_observation_remains_distinct(self):

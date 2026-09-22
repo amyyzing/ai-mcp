@@ -22,7 +22,7 @@ LOCK=threading.RLock()
 SLOTS=threading.Semaphore(1)
 JOBS:dict[str,'Job']={}
 RATES:dict[str,collections.deque]={}
-STAGES=['Inspecting source','Classifying input','Decoding constants','Recovering structure','Collecting evidence','Reconstructing source','Checking coverage','Checking Luau','Collecting artifacts']
+STAGES=['Inspecting source','Checking official Luau','Decoding literals and constants','Selecting VM adapter','Preserving full source','Validating selected output','Reporting coverage','Analysis complete','Collecting artifacts']
 
 @dataclass
 class Job:
@@ -34,6 +34,7 @@ class Job:
     timeout:int
     state:str='queued'
     phase:int=0
+    phase_text:str='Inspecting source'
     created:float=field(default_factory=time.time)
     started:float|None=None
     finished:float|None=None
@@ -48,7 +49,7 @@ class Job:
 
     def event(self,message,phase=None):
         with LOCK:
-            if phase is not None:self.phase=phase
+            if phase is not None:self.phase=phase;self.phase_text=message
             if not self.events or self.events[-1]['message']!=message:
                 self.events.append({'message':message,'at':round(time.time()-self.created,2)})
                 self.events=self.events[-40:]
@@ -57,7 +58,7 @@ class Job:
         with LOCK:
             elapsed=((self.finished or time.time())-self.started) if self.started else 0
             return {'id':self.id,'name':self.name,'state':self.state,'phase':self.phase,
-                'phaseLabel':STAGES[self.phase],'elapsed':round(elapsed,2),'mode':self.mode,
+                'phaseLabel':self.phase_text,'elapsed':round(elapsed,2),'mode':self.mode,
                 'sourceHash':self.source_hash,'events':list(self.events),'error':self.error,
                 'warnings':list(self.warnings),'quality':dict(self.quality),'primary':self.primary,
                 'expiresAt':self.finished+TTL if self.finished else None,
@@ -65,10 +66,15 @@ class Job:
 
 def artifact_kind(name):
     if name=='embedded_main.luau' or name.startswith('embedded_sources/') and name.endswith('.luau'):return 'Decoded source'
-    if name=='program.application.luau':return 'Application view · model-specific'
-    if name=='program.analysis.luau':return 'Decoded analysis · VM retained'
+    if name in ('program.application.luau','program.observed.luau'):return 'Observed calls only · not the full program'
+    if '.embedded.' in name and name.endswith('.luau'):return 'Embedded source candidate · not executed'
+    if name.endswith('.formatted.luau'):return 'Formatted source · validated derived view'
+    if name.endswith('.readable.luau'):return 'Literal / constant cleanup · validated'
+    if name=='original.input.luau':return 'Exact original submission'
+    if name.endswith('.inspection.json'):return 'Functions, strings and dependency evidence'
+    if name=='program.analysis.luau':return 'Specialized analysis · recovery may be partial'
     if name=='candidate.unverified.luau':return 'Unverified candidate'
-    if name=='program.source.luau':return 'Original source · no VM detected'
+    if name=='program.source.luau':return 'Preserved source · not a recovery claim'
     if name.endswith('.decompiled.luau'):return 'Structural Luau'
     if name.endswith('.pseudo.lua'):return 'Instruction view'
     return 'Analysis report'
@@ -95,7 +101,7 @@ def terminate(job):
 
 def engine_ready():
     import importlib.util
-    return importlib.util.find_spec('luauvmp') is not None and all(shutil.which(x) for x in ('lune','luau','luau-compile'))
+    return importlib.util.find_spec('luauvmp') is not None and all(shutil.which(x) for x in ('lune','luau','luau-compile','luau-ast'))
 
 def execute(job,source):
     acquired=False
@@ -129,7 +135,7 @@ def execute(job,source):
                         line,_,remainder=pending.partition(b'\n');pending=bytearray(remainder)
                         match=re.search(rb'\[([1-7])/7\]',line)
                         if match:
-                            stage=int(match[1]);job.event(STAGES[stage],stage)
+                            stage=int(match[1]);message=line[match.end():].decode('utf8','replace').strip()[:200];job.event(message or STAGES[stage],stage)
                     if len(pending)>8192:pending.clear()
             reader=threading.Thread(target=drain,daemon=True);reader.start()
             deadline=time.monotonic()+job.timeout
@@ -160,8 +166,16 @@ def execute(job,source):
                 'finalPayloadExecuted':pipeline.get('final_payload_executed'),'adapter':pipeline.get('adapter','luau-vmp-deobf'),
                 'family':pipeline.get('family','luraph-v14'),'executionContext':pipeline.get('execution_context','capture-only'),
                 'decodedStrings':pipeline.get('decoded_pool_entries'),'inlinedAccessors':pipeline.get('inlined_accessor_calls'),
-                'nativeComparisons':pipeline.get('native_comparisons_passed'),'nativeRuntime':pipeline.get('native_runtime')}
-            local_adapter=pipeline.get('adapter')=='closed-luau-1.0.0'
+                'nativeComparisons':pipeline.get('native_comparisons_passed'),'nativeRuntime':pipeline.get('native_runtime'),
+                'outcome':pipeline.get('outcome'),'changed':pipeline.get('changed'),
+                'formattingChanged':pipeline.get('formatting_changed'),
+                'escapedLiteralsDecoded':pipeline.get('escaped_literals_decoded'),
+                'constantExpressionsFolded':pipeline.get('constant_expressions_folded'),
+                'syntacticFunctions':pipeline.get('syntactic_functions'),
+                'externalUrls':pipeline.get('external_urls'),'opaqueBinaryLiterals':pipeline.get('opaque_binary_literals'),
+                'completeDevirtualization':pipeline.get('complete_devirtualization'),'embeddedSources':pipeline.get('embedded_sources'),
+                'selectedOutputHash':pipeline.get('output_sha256'),'observedArtifact':pipeline.get('observed_artifact')}
+            local_adapter=pipeline.get('adapter') in ('closed-luau-1.0.0','official-luau-fallback-1','native-recovery-2.0.0')
             if local_adapter and pipeline.get('external_effects_allowed') is not False:raise RuntimeError('The local adapter did not confirm its no-external-effects boundary.')
             if not local_adapter and job.quality['finalPayloadExecuted'] is not False:raise RuntimeError('The pipeline did not confirm the final-payload non-execution boundary.')
             partial=bool(pipeline.get('partial',False))
@@ -174,9 +188,13 @@ def execute(job,source):
             if d.get('compile_checked') is not True:
                 partial=True;job.warnings.append('A successful compilation check was not confirmed.')
             candidates=[]
-            for pattern in ('*.luau','*.lua','*.json','embedded_sources/*.luau','embedded_sources/*.json'):candidates.extend(output.glob(pattern))
+            for pattern in ('*.luau','*.lua','*.json','*.txt','embedded_sources/*.luau','embedded_sources/*.json'):candidates.extend(output.glob(pattern))
             total=0
-            for path in sorted(set(candidates)):
+            preferred=[pipeline.get('primary'),'original.input.luau','pipeline.json','recovery-report.json']
+            def order(path):
+                name=path.relative_to(output).as_posix()
+                return (preferred.index(name) if name in preferred else 100,name)
+            for path in sorted(set(candidates),key=order):
                 if not path.is_file() or path.is_symlink():continue
                 size=path.stat().st_size
                 if total+size>MAX_ARTIFACTS:
@@ -188,7 +206,7 @@ def execute(job,source):
             job.primary=next((n for n in choices if n in job.artifacts),None)
             if job.primary is None:job.primary=next((n for n in job.artifacts if n.endswith('.luau')),None)
             if job.primary is None:raise RuntimeError('The engine produced no readable source artifact.')
-            job.state='partial' if partial else 'completed';job.event('Recovery finished · inspect the quality report')
+            job.state='partial' if partial else 'completed';job.event('Analysis finished · '+str(pipeline.get('outcome','inspect the quality report')))
     except ValueError as exc:
         job.state,job.error='unsupported',str(exc);job.event('Input format not supported')
     except Exception as exc:
@@ -234,9 +252,9 @@ async def policy(request:Request,call_next):
 def health():
     ready=engine_ready()
     with LOCK:active=sum(not j.finished for j in JOBS.values())
-    return JSONResponse({'ok':ready,'engine':'luau-vmp-deobf','commit':ENGINE_COMMIT,'version':'0.5.2','siteVersion':'1.1.0','nativeLuau':'0.739',
-        'adapters':['luraph-v14','closed-luau-1.0.0'],
-        'recoveryScope':'Luraph; Prometheus-style constant arrays and model-specific application views; Lua/Luau source analysis. Not universal.',
+    return JSONResponse({'ok':ready,'engine':'luau-vmp-deobf','commit':ENGINE_COMMIT,'version':'0.5.2','siteVersion':'2.0.0','nativeLuau':'0.739',
+        'adapters':['luraph-v14','closed-luau-1.0.0','native-recovery-2.0.0'],'formatter':'StyLua 2.5.2' if shutil.which('stylua') else None,
+        'recoveryScope':'Native Luau literal/constant cleanup, source formatting and dependency inspection; specialized Luraph/Prometheus-style recovery. Unknown VMs remain partial.',
         'activeJobs':active,'maxSourceBytes':MAX_SOURCE,'retentionSeconds':TTL,'thirdPartyUploads':False},status_code=200 if ready else 503)
 
 @app.post('/api/jobs',status_code=202)

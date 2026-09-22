@@ -69,7 +69,7 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
   if (busy) return;
   mode = button.dataset.mode;
   document.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); });
-  $('mode-description').textContent = mode === 'strict' ? 'Luraph: capture without staged finalisation. Other Lua: constant-array analysis without application specialization.' : 'Auto-selects the adapter. Closed computations can be checked against official Luau 0.739. Observed application views remain model-specific partial recovery.';
+  $('mode-description').textContent = mode === 'strict' ? 'Luraph: capture without staged finalisation. Other Luau: native literal/constant cleanup and source analysis without application execution.' : 'Native Luau 0.739 cleanup is applied to every input. Supported VM adapters run separately; observed calls never replace the full source.';
 }));
 function toggleExpand(force) {
   const expanded = force === undefined ? !$('workbench').classList.contains('expanded') : force;
@@ -111,7 +111,7 @@ function setBusy(value) {
   busy = value; source.readOnly = value;
   ['paste-button','clear-button','upload-button','timeout'].forEach(id => $(id).disabled = value);
   document.querySelectorAll('[data-mode]').forEach(b => b.disabled = value); $('cancel-button').hidden = !value;
-  $('run-button').querySelector('span').textContent = value ? 'Processing' : 'Devirtualise'; updateRun();
+  $('run-button').querySelector('span').textContent = value ? 'Processing' : 'Analyse & deobfuscate'; updateRun();
 }
 function showView(view) { for (const id of ['output-empty','running-state','error-state','output-code']) $(id).hidden = id !== view; }
 function badge(label, cls = '') { $('output-badge').textContent = label; $('output-badge').className = `output-badge ${cls}`; }
@@ -120,7 +120,7 @@ function resetOutput() {
   $('output-code').textContent = ''; $('artifact-picker').hidden = true; $('output-note').hidden = false;
   $('output-note').textContent = 'Waiting for engine output'; $('output-size').textContent = '—';
   $('copy-button').disabled = true; $('download-button').disabled = true; $('export-all').disabled = true;
-  $('warnings').hidden = true; $('warnings').textContent = ''; $('report-metrics').textContent = ''; $('events').textContent = '';
+  $('result-summary').hidden = true; $('warnings').hidden = true; $('warnings').textContent = ''; $('report-metrics').textContent = ''; $('events').textContent = '';
 }
 async function startJob() {
   if (busy || !source.value.trim() || !ready) return;
@@ -174,14 +174,18 @@ function renderJob(job) {
   }
   const q = job.quality;
   const metrics = [
-    ['Engine', q.family || 'Detecting', ''],
-    ['Compile check', q.compileChecked == null ? (terminal.has(job.state) ? 'Not checked' : 'Pending') : q.compileChecked === true ? 'Passed' : 'Unconfirmed', q.compileChecked === true ? 'good' : ''],
-    [q.decodedStrings != null ? 'Strings decoded' : 'Functions', q.decodedStrings ?? q.prototypes ?? '—', ''],
-    [q.nativeComparisons != null ? 'Native matches' : 'Instructions', q.nativeComparisons != null ? `${q.nativeComparisons}/3 profiles` : q.instructions?.toLocaleString() ?? '—', ''],
-    [q.nativeRuntime ? 'Verification runtime' : 'Fallbacks', q.nativeRuntime ?? q.fallbackInstructions ?? '—', q.fallbackInstructions > 0 ? 'warn' : ''],
-    ['Capture', q.captureKind ?? '—', ''],
-  ];
-  $('report-metrics').replaceChildren(...metrics.map(([label,value,cls]) => {
+    ['Input class', q.family || 'Detecting', ''],
+    ['Selected compile check', q.compileChecked == null ? 'Pending' : q.compileChecked ? 'Passed' : 'Unconfirmed', q.compileChecked ? 'good' : 'warn'],
+    ['Escaped literals decoded', q.escapedLiteralsDecoded ?? '—', ''],
+    ['Constant expressions reduced', q.constantExpressionsFolded ?? '—', ''],
+    ['Pool entries recovered', q.decodedStrings ?? '—', ''],
+    ['Functions inspected', q.syntacticFunctions ?? q.prototypes ?? '—', ''],
+    ['Referenced URLs · not fetched', q.externalUrls ?? '—', ''],
+    ['Opaque binary literals', q.opaqueBinaryLiterals ?? '—', ''],
+    ['Embedded source candidates', q.embeddedSources ?? '—', ''],
+    ['Native verification', q.nativeRuntime ?? '—', ''],
+    ['Observed profiles · not all paths', q.nativeComparisons != null ? `${q.nativeComparisons}/3` : 'Not run', ''],
+  ];  $('report-metrics').replaceChildren(...metrics.map(([label,value,cls]) => {
     const el = document.createElement('span'); el.className = `metric ${cls}`; el.append(document.createTextNode(label));
     const v = document.createElement('strong'); v.textContent = String(value); el.append(v); return el;
   }));
@@ -189,7 +193,14 @@ function renderJob(job) {
 }
 async function finishJob(job) {
   setBusy(false);
-  badge(job.quality.captureKind === 'native-verified-application-view' ? 'Model-verified view' : ({completed:'Processed',partial:'Partial recovery',unsupported:'Unsupported',failed:'Failed',cancelled:'Cancelled'})[job.state], job.state);
+  const outcomes = {'unchanged':'Unchanged · no transformation','formatted-only':'Formatted only','literals-decoded':'Literals decoded','constants-decoded':'Constants decoded','partial-vm-recovery':'Partial VM recovery','partial-analysis':'Partial analysis'};
+  const resultLabel = outcomes[job.quality.outcome] || ({completed:'Processed',partial:'Partial recovery',unsupported:'Unsupported',failed:'Failed',cancelled:'Cancelled'})[job.state];
+  badge(resultLabel, job.state);
+  const summary = $('result-summary');
+  summary.hidden = !['completed','partial'].includes(job.state);
+  summary.textContent = job.quality.outcome === 'unchanged' ? 'No supported source transformation was applied. This is the preserved input, not a devirtualized application.' :
+    job.quality.outcome === 'formatted-only' ? 'Layout was improved; no hidden program or encrypted payload was recovered.' :
+    `${resultLabel}. Full source is retained. ${job.quality.externalUrls ? 'Referenced remote bodies were not downloaded. ' : ''}${job.state === 'partial' ? 'Remaining recovery gaps are listed below.' : 'Compilation validates syntax, not every runtime behavior.'}`;
   $('export-all').disabled = !job.artifacts.length;
   if (job.artifacts.length) {
     $('artifact-picker').hidden = false; $('output-note').hidden = true;
@@ -198,7 +209,7 @@ async function finishJob(job) {
   }
   if (job.state === 'completed' || job.state === 'partial') {
     await selectArtifact(job.primary || job.artifacts[0]?.name);
-    notify(job.state === 'completed' ? 'Processing finished. Inspect the source and quality report.' : 'Partial recovery is available. Read the warnings.');
+    notify(resultLabel + '. Inspect the selected artifact and coverage report.');
   } else {
     showView('error-state'); $('error-title').textContent = job.state === 'unsupported' ? 'This recovery path needs more support.' : job.state === 'cancelled' ? 'Recovery cancelled.' : 'This one needs a closer look.';
     $('error-message').textContent = job.error || 'The worker was stopped. Your source is still in the input editor.';

@@ -1,64 +1,60 @@
 # luraph-devirtualiser
 
-A Railway-hosted, ephemeral Lua/Luau recovery workbench. Raycast-inspired charcoal/coral colours, translucent glass panels, animated blurred particles, responsive editors, real progress, cancellation and complete artifact downloads.
+Railway-hosted Lua/Luau recovery workbench with a charcoal/coral glass interface, blurred particles, bounded jobs, cancellation and full artifact downloads.
 
-## Recovery providers
+## Version 2.0: useful output, separate evidence
 
-- **Luraph:** pinned `luau-vmp-deobf` 0.5.2, commit `5313d53165d64207e44be533358f2334c0657ee8`. The upstream capture/finalisation pipeline stays intact and third-party decompiler uploads stay disabled.
-- **Local analysis adapter:** parses its supported Lua/Luau syntax, evaluates closed constant-array decoders, folds literal arithmetic, and emits the complete analysis source. Supports structures encountered in Prometheus-style/WeAreDevs wrappers; the banner is evidence, not proof of compatibility.
-- **Closed-model specialization:** in Full recovery, a bounded Python evaluator can derive scalar print/warn operations and return values. A candidate is promoted only after the original and candidate match under three native Luau runs. This is **model-specific partial reconstruction, NOT a universal all-path decompiler**. Global mutations, entry arguments, timings, diagnostic behaviour, unexecuted branches and Roblox interactions are not proved equivalent. Missing or unsupported APIs stop specialization. A disclosed scratch-global absence profile may be used for recognized diagnostic scaffolding.
-- **Official native validation:** Luau **0.739** `luau` and `luau-compile`, downloaded from the official release and SHA256-verified. Lune 0.10.5 remains installed because the Luraph engine requires it; the new adapter uses the official CLI instead of Lune or a Lua 5.x approximation.
+Every valid input gets official Luau source analysis, independent of whether a VM family is recognized. The default output is the best validated readable source, not an unchanged copy that hides a decoded alternative.
 
-Official archive SHA256: `8a9b4b381021722c82d6e6cda0964b5c9e7f354ec1035fcd8b657acc22e49247`.
+The layers are separate:
 
-## What the outputs mean
+- **Literal cleanup:** AST byte spans normalize printable decimal, hexadecimal and Unicode escapes. Binary strings, comments and long-string contents are preserved. Native AST comparison validates the rewritten string values.
+- **Constant cleanup:** closed literal-only expressions are reduced. Whole-program debug-free bytecode must match at O1 and O2, or individual literal-only expressions must return identical typed values in native Luau. Application functions and unknown calls are not executed by this pass.
+- **Formatting:** pinned StyLua produces a derived view. Official AST or O1/O2 bytecode comparison and compilation are mandatory before selecting it. Debug-source, line-number and timing observations can still differ; the original and unformatted views remain downloadable.
+- **Closed constant-array decoding:** recognized prefixes are isolated from the application and evaluated twice in official Luau with a restricted standard-library environment. Native pool recovery avoids the old Python evaluator's instruction ceiling on larger arrays. Prefixes referencing host APIs are not accepted. Accessor inlining is disabled when the array escapes into the suffix or the accessor is reassigned.
+- **Specialized VM recovery:** the pinned Luraph engine remains available. Prometheus-style constant-array and closed-model recovery remain explicitly partial. A product banner alone is not proof of support.
+- **Inspection:** includes uncalled function bodies, string byte hashes, opaque binary records, possible HTTP/dynamic-compilation dependencies and immutable-local URL chains. No referenced URL is followed. Constant arguments to dynamic compiler references can be exported as embedded source candidates without execution.
 
-`program.application.luau` is a native-verified **observed application view**. It is partial and accompanied by scope/assumptions. `program.analysis.luau` preserves the full parsed program with decoded constants and literal arithmetic; VM dispatch remains, and formatting can affect anti-tamper checks. `candidate.unverified.luau` is never silently promoted. `program.source.luau` is non-VM source passed through and compile-checked, not devirtualized or executed. Existing Luraph embedded/structural/instruction artifacts retain their distinct labels. A clean compile is not a semantic-equivalence proof.
+This is not a universal all-path decompiler. The official compiler accepting syntax does not imply a custom VM was understood. Unknown VM handlers, external runtimes, encrypted handoff formats and unobserved behavior can remain unresolved.
 
-Reports include input hashes, decoded constants, original-versus-candidate traces, runtime version, seeds, unresolved globals and native validation failures. The adapter has no parameter for a desired/expected output.
+## Outputs
 
-## Running
+- `original.input.luau`: exact submitted bytes, including an outer Markdown fence when supplied.
+- `program.source.luau`: input with only a complete outer fence removed, if present.
+- `program.readable.luau`: validated literal/constant cleanup.
+- `program.formatted.luau`: validated formatted derivative.
+- `program.analysis.luau` and `recovered.*.luau`: specialized analysis and derived views, with separate recovery qualifications.
+- `program.observed.luau`: bounded observed print/warn calls and scalar returns. **Not the full program and never the default source.**
+- `program.inspection.json`: source structure, exact string hashes, URL evidence and gaps.
+- `program.embedded.*.luau`: literal embedded-source candidates, not remotely fetched applications.
+- `static-cleanup.json`, `native-constant-pool.json`, `pipeline.json`, `recovery-report.json`: provenance, individual validation results and transformations.
 
-Build and run with Docker on Linux x86_64:
+Outcomes distinguish **unchanged**, **formatted only**, **literals decoded**, **constants decoded**, and **partial VM recovery**. Job completion and compilation are never treated as a proof of whole-program equivalence. Scalar-JSON bugs, failed clipboard behavior and other application bugs are not silently repaired.
+
+## Pinned toolchain
+
+Official Luau 0.739 (`luau`, `luau-compile`, `luau-ast`), Lune 0.10.5 for the existing Luraph engine, StyLua 2.5.2, and `binxgtl/luau-vmp-deobf` commit `5313d53165d64207e44be533358f2334c0657ee8`. Release archives are SHA256-verified. No Lua 5.3 compatibility runtime is used by the native checks. The small Python evaluator remains an optional specialization model, not the source of truth for native language semantics.
+
+The Dockerfile requires Linux x86_64. It runs all native, API and recovery tests in a separate validation stage before producing the runtime image. Test-only HTTP dependencies are not installed in the final image.
 
 ```sh
 docker build -t luraph-devirtualiser .
 docker run --rm -p 8080:8080 luraph-devirtualiser
 ```
 
-The official Ubuntu release bundled here is x86_64. Other architectures require a separately verified Luau build; this image fails explicitly rather than installing an incompatible binary.
+For local tests, install `requirements-dev.txt`, the pinned engine, and put the five native executables on PATH. Then run `python -m unittest discover -s tests -v` and `python smoke.py`. Required native tools are not silently skipped in the new test suite.
 
-Railway uses `railway.json`, the root Dockerfile, `$PORT`, and `/api/health`. Keep one replica: the queue and artifact store are process-local.
+## Operational scope
 
-For local tests, install `requirements-dev.txt` and put official `luau`, `luau-compile`, plus Lune on PATH. Install the pinned recovery engine for end-to-end Luraph tests. Run:
+One replica; one active worker and a bounded pending queue. 4 MB UTF-8 input, 30–600 second job deadline, OS memory/CPU/file limits. Cancellation kills the outer worker process group. Complete artifacts are retained subject to 32 MB/job and 96 MB overall limits; omissions are explicitly reported. A small preview never discards retained download bytes. Results expire after 30 minutes or on redeployment.
 
-```sh
-python -m unittest discover -s tests -v
-python smoke.py
-```
+Submissions stay on the Railway service. No third-party decompiler uploads, browser local storage, executor workspace writes or automatic remote-loader fetches. Full mode may run a supported closed application in a no-host-capability environment; strict mode does not execute the application. Literal-only calculations and isolated decoder prefixes are distinct from application execution.
 
-Native tests must not be reported as passed when skipped. Synthetic tests are owned fixtures, not a claim of coverage for all obfuscator releases. User submissions are not checked into the repository.
-
-## Limits and storage
-
-4 MB UTF-8 input; one active worker with four pending jobs; 30–600 second job timeout; per-process memory/CPU/file limits; 32 MB retained artifacts per job; 96 MB global retention; 30-minute maximum result retention. Cancellation terminates the process group. Results are scoped to an HttpOnly browser-session cookie. Jobs use temporary server files; retained results live in server memory and are evicted on capacity, expiry or restart. No browser local storage and no executor workspace writes.
-
-The native verification harness gives submissions an explicit pure-library environment. No require, filesystem, network, OS commands, clipboard or Roblox services are exposed. Original code is executed only within the disclosed closed-model verification path; Luraph continues using its separate disabled-final-payload capture policy. Static/strict mode skips application specialization. Unsupported syntax and unknown custom VMs can still fail or produce partial analysis; universal recovery is not claimed.
-
-## HTTP interface
-
-- `GET /api/health` — exact runtime/adapter status.
-- `POST /api/jobs` — source/name/mode/timeout; mode is `sandboxed` or `strict`.
-- `GET /api/jobs/{id}` — progress, quality, warnings and artifact manifest.
-- `DELETE /api/jobs/{id}` — cancel.
-- `GET /api/jobs/{id}/artifact?name=...` — bounded preview.
-- Add `download=true` for the entire artifact; preview truncation never discards retained bytes.
-- `GET /api/jobs/{id}/download` — full retained artifact archive.
-
-Maintain the same cookie across requests. A different browser session cannot retrieve another session's job.
+HTTP: `GET /api/health`, `POST /api/jobs`, `GET /api/jobs/{id}`, `DELETE /api/jobs/{id}`, `GET /api/jobs/{id}/artifact?name=...` (`download=true` for full bytes), and `GET /api/jobs/{id}/download`. Retain the HttpOnly session cookie; results are session-owned.
 
 ## Attribution
 
-Luau: https://github.com/luau-lang/luau — MIT License (included in image as LUAU-LICENSE).
-Luraph engine: https://github.com/binxgtl/luau-vmp-deobf — upstream license included as ENGINE-LICENSE.
-Lune: https://github.com/lune-org/lune.
+- Luau: https://github.com/luau-lang/luau (MIT; license included in image).
+- Engine: https://github.com/binxgtl/luau-vmp-deobf (upstream license included).
+- Lune: https://github.com/lune-org/lune.
+- StyLua 2.5.2: https://github.com/JohnnyMorganz/StyLua/tree/v2.5.2 (unmodified binary; MPL-2.0 license and corresponding upstream source available).

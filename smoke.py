@@ -31,8 +31,8 @@ def job_for(source, mode='strict'):
 plain = 'print("plain owned fixture")'
 job = job_for(plain)
 assert job.state == 'completed', (job.state, job.error)
-assert job.primary == 'program.source.luau', job.quality
-assert job.quality['captureKind'] == 'source-pass-through', job.quality
+assert job.primary in ('program.source.luau','program.formatted.luau'), job.quality
+assert job.quality['captureKind'] == 'static-source-analysis', job.quality
 assert job.quality['compileChecked'] is True, job.quality
 assert job.quality['finalPayloadExecuted'] is False, job.quality
 assert job.artifacts[job.primary].decode().strip() == plain
@@ -40,10 +40,10 @@ print('SMOKE: plain source passed through and compiled without execution', flush
 
 job = job_for(protected_literal(b'owned worker end-to-end fixture'), 'sandboxed')
 assert job.state == 'partial', (job.state, job.error, job.warnings)
-assert job.primary == 'program.application.luau', (job.primary, job.warnings)
+assert job.primary not in ('program.application.luau','program.observed.luau'), (job.primary, job.warnings)
 assert job.quality['nativeComparisons'] == 3, job.quality
 assert job.quality['nativeRuntime'] == 'official-luau-0.739', job.quality
-assert job.artifacts[job.primary].decode().strip() == 'print("owned worker end-to-end fixture")'
+assert job.artifacts['program.observed.luau'].decode().strip() == 'print("owned worker end-to-end fixture")'
 print('SMOKE: real worker subprocess recovered owned VM-shaped fixture with three native comparisons', flush=True)
 
 job = job_for('local =')

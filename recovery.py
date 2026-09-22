@@ -48,7 +48,7 @@ def prefix_information(body):
     return {'wrapper':fn,'table':table,'resolver':resolver,'scope':scope,'evaluator':e,'declaration':funcs[0], 'name':funcs[0]['target']['name']}
 
 def replacements(body,info):
-    if not info:return {}
+    if not info or not info.get("allow_inline", True):return {}
     out={};mark=object()
     def expression(n,scope):
         if n['k']=='function':
@@ -135,7 +135,10 @@ def run_local(source_path,output,seconds=180):
     virtualized=bool(wrapped and any(n['k']=='while' for n in nodes) and functions>=4)
     label='prometheus-style' if virtualized else 'generic-luau'
     info=None;warnings=[];decode_error=None
-    try:info=prefix_information(body)
+    try:
+        from native_pool import recover as native_prefix
+        info=native_prefix(source,body,output,timeout=min(5,max(1,seconds/6)))
+        if info is None:info=prefix_information(body)
     except (Halt,Exception) as ex:
         decode_error=str(ex);warnings.append('Constant-array analysis stopped: '+str(ex)[:300])
     print('[2/7] Decoding literal constant arrays',flush=True)
