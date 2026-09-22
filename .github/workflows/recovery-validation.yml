@@ -18,7 +18,7 @@ jobs:
         run: docker build --progress=plain -t recovery-validation .
       - name: Export reproducible local test kit
         run: |
-          mkdir -p native-kit/bin native-kit/project native-kit/vendor
+          mkdir -p native-kit/bin native-kit/project native-kit/vendor native-kit/vendor-wheels
           id=$(docker create recovery-validation)
           docker cp "$id:/usr/local/bin/luau" native-kit/bin/
           docker cp "$id:/usr/local/bin/luau-compile" native-kit/bin/
@@ -26,13 +26,18 @@ jobs:
           docker cp "$id:/usr/local/bin/lune" native-kit/bin/
           docker cp "$id:/app/." native-kit/project/
           docker cp "$id:/usr/local/lib/python3.12/site-packages/luauvmp" native-kit/vendor/
+          docker cp "$id:/usr/local/lib/python3.12/site-packages/tools" native-kit/vendor/
           docker rm "$id"
+          curl -fL --max-time 60 https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64.zip -o /tmp/stylua.zip
+          echo 'bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab  /tmp/stylua.zip' | sha256sum -c -
+          unzip /tmp/stylua.zip -d native-kit/bin
+          python -m pip download --only-binary=:all: --no-deps --platform manylinux2014_x86_64 --implementation cp --python-version 313 --abi cp313 zstandard==0.25.0 --dest native-kit/vendor-wheels
           tar -czf native-test-kit.tar.gz native-kit
       - uses: actions/upload-artifact@v4
         with:
           name: native-test-kit
           path: native-test-kit.tar.gz
-          retention-days: 3
+          retention-days: 1
       - name: Run all packaged tests with test-only dependencies
         run: docker run --rm --user root --entrypoint sh recovery-validation -c 'pip install --no-cache-dir httpx==0.28.1 >/dev/null && python -m unittest discover -s tests -v'
       - name: Inspect native toolchain contracts
