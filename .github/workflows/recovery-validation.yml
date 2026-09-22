@@ -1,0 +1,23 @@
+name: Recovery validation
+on:
+  push:
+    branches: [deobfuscation-readability-v2, luraph-devirtualiser]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: recovery-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run native regression gates
+        run: docker build --progress=plain -t recovery-validation .
+      - name: Run all packaged tests
+        run: docker run --rm --entrypoint python recovery-validation -m unittest discover -s tests -v
+      - name: Inspect native toolchain contracts
+        run: |
+          docker run --rm --entrypoint sh recovery-validation -c 'printf '\''local s:string="\\104ello"; local function cb() return "\\119orld" end; return `{s}`'\'' > /tmp/probe.luau; luau-ast /tmp/probe.luau; echo; luau-compile --help | head -25'
