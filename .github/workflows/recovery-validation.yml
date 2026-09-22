@@ -16,8 +16,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and run native regression gates
         run: docker build --progress=plain -t recovery-validation .
-      - name: Run all packaged tests
-        run: docker run --rm --entrypoint python recovery-validation -m unittest discover -s tests -v
-      - name: Inspect native toolchain contracts
+      - name: Export reproducible local test kit
         run: |
-          docker run --rm --entrypoint sh recovery-validation -c 'printf '\''local s:string="\\104ello"; local function cb() return "\\119orld" end; return `{s}`'\'' > /tmp/probe.luau; luau-ast /tmp/probe.luau; echo; luau-compile --help | head -25'
+          mkdir -p native-kit/bin native-kit/project native-kit/vendor
+          id=$(docker create recovery-validation)
+          docker cp "$id:/usr/local/bin/luau" native-kit/bin/
+          docker cp "$id:/usr/local/bin/luau-compile" native-kit/bin/
+          docker cp "$id:/usr/local/bin/luau-ast" native-kit/bin/
+          docker cp "$id:/usr/local/bin/lune" native-kit/bin/
+          docker cp "$id:/app/." native-kit/project/
+          docker cp "$id:/usr/local/lib/python3.12/site-packages/luauvmp" native-kit/vendor/
+          docker rm "$id"
+          tar -czf native-test-kit.tar.gz native-kit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-test-kit
+          path: native-test-kit.tar.gz
+          retention-days: 3
+      - name: Run all packaged tests with test-only dependencies
+        run: docker run --rm --user root --entrypoint sh recovery-validation -c 'pip install --no-cache-dir httpx==0.28.1 >/dev/null && python -m unittest discover -s tests -v'
+      - name: Inspect native toolchain contracts
+        if: always()
+        run: |
+          chmod +x native-kit/bin/*
+          printf '%s' 'local s:string="\104ello"; local function cb() return "\119orld" end; return `{s}`' > /tmp/probe.luau
+          native-kit/bin/luau-ast /tmp/probe.luau
+          echo
+          native-kit/bin/luau-compile --help | head -25
