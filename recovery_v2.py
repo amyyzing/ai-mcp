@@ -143,6 +143,7 @@ def run(source_path: Path, output: Path, seconds: int = 180):
     partial = bool(static.get('coverageCapped'))
     changed = bool(static.get('changed'))
     legacy = None
+    host_trace = None
     print('[3/7] Selecting a specialized VM adapter only when structure matches', flush=True)
     from luauvmp import luraph_loader
     luraph = luraph_loader.detect(text.decode('utf8'))
@@ -183,6 +184,23 @@ def run(source_path: Path, output: Path, seconds: int = 180):
         else:
             outcome = 'partial-analysis'
         warnings.append('VM-family routing is structural and version-specific. Static cleanup and successful compilation do not establish complete devirtualization.')
+    # In Full mode, VM-shaped wrappers can be observed against inert host stubs.
+    # This executes only the submitted wrapper; remote bodies are neither fetched
+    # nor compiled. The result is evidence, not an all-path source claim.
+    if candidate and os.environ.get('LUAUVMP_STRICT_CAPTURE') != '1':
+        try:
+            from host_trace import observe
+            host_trace = observe(path, output, left(8))
+            behavior = host_trace.get('behavioralArtifact')
+            if behavior and (base == 'program.source.luau' or base in ('program.analysis.luau','program.pseudo.lua')):
+                base = best = behavior
+                capture = 'instrumented-host-trace'
+                outcome = 'partial-vm-recovery'
+                changed = True
+                partial = True
+                warnings.append('A concise behavioral reconstruction was selected from two matching no-network profiles. It may omit branches not exercised by those profiles.')
+        except Exception as trace_error:
+            warnings.append('Bounded host-surface tracing did not finish: ' + str(trace_error)[:500])
     print('[4/7] Keeping full source separate from observed application calls', flush=True)
     # Legacy code may rewrite program.source; restore the exact normalized input.
     path.write_bytes(text)
@@ -217,7 +235,15 @@ def run(source_path: Path, output: Path, seconds: int = 180):
         'warnings': warnings, 'external_effects_allowed': False,
         'final_payload_executed': bool(legacy and legacy.get('final_payload_executed')),
         'native_original_attempted': bool(legacy and legacy.get('native_original_attempted')),
-        'execution_context': legacy.get('execution_context', 'capture-only') if legacy else 'static-no-execution',
+        'submitted_wrapper_executed': bool(host_trace and host_trace.get('submittedWrapperExecuted')),
+        'host_trace_executed': bool(host_trace),
+        'host_trace_profiles': len(host_trace.get('profiles', [])) if host_trace else 0,
+        'host_trace_profiles_matched': host_trace.get('profilesMatched') if host_trace else None,
+        'remote_bodies_fetched': bool(host_trace and host_trace.get('remoteBodiesFetched')),
+        'remote_bodies_executed': bool(host_trace and host_trace.get('remoteBodiesExecuted')),
+        'behavioral_artifact': host_trace.get('behavioralArtifact') if host_trace else None,
+        'execution_context': ('instrumented-no-host-luau' if host_trace else
+                              (legacy.get('execution_context', 'capture-only') if legacy else 'static-no-execution')),
         'capture_kind': capture, 'native_runtime': 'official-luau-' + LUAU_VERSION,
         'escaped_literals_decoded': static.get('escapedLiteralsDecoded', 0),
         'constant_expressions_folded': static.get('constantExpressionsFolded', 0),
