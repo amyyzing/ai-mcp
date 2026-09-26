@@ -67,6 +67,7 @@ class Job:
 def artifact_kind(name):
     if name=='embedded_main.luau' or name.startswith('embedded_sources/') and name.endswith('.luau'):return 'Decoded source'
     if name in ('program.application.luau','program.observed.luau'):return 'Observed calls only · not the full program'
+    if name=='program.behavioral.luau':return 'Behavioral reconstruction · bounded no-network trace'
     if '.embedded.' in name and name.endswith('.luau'):return 'Embedded source candidate · not executed'
     if name.endswith('.formatted.luau'):return 'Formatted source · validated derived view'
     if name.endswith('.readable.luau'):return 'Literal / constant cleanup · validated'
@@ -174,7 +175,14 @@ def execute(job,source):
                 'syntacticFunctions':pipeline.get('syntactic_functions'),
                 'externalUrls':pipeline.get('external_urls'),'opaqueBinaryLiterals':pipeline.get('opaque_binary_literals'),
                 'completeDevirtualization':pipeline.get('complete_devirtualization'),'embeddedSources':pipeline.get('embedded_sources'),
-                'selectedOutputHash':pipeline.get('output_sha256'),'observedArtifact':pipeline.get('observed_artifact')}
+                'selectedOutputHash':pipeline.get('output_sha256'),'observedArtifact':pipeline.get('observed_artifact'),
+                'submittedWrapperExecuted':pipeline.get('submitted_wrapper_executed'),
+                'hostTraceExecuted':pipeline.get('host_trace_executed'),
+                'hostTraceProfiles':pipeline.get('host_trace_profiles'),
+                'hostTraceProfilesMatched':pipeline.get('host_trace_profiles_matched'),
+                'remoteBodiesFetched':pipeline.get('remote_bodies_fetched'),
+                'remoteBodiesExecuted':pipeline.get('remote_bodies_executed'),
+                'behavioralArtifact':pipeline.get('behavioral_artifact')}
             local_adapter=pipeline.get('adapter') in ('closed-luau-1.0.0','official-luau-fallback-1','native-recovery-2.0.0')
             if local_adapter and pipeline.get('external_effects_allowed') is not False:raise RuntimeError('The local adapter did not confirm its no-external-effects boundary.')
             if not local_adapter and job.quality['finalPayloadExecuted'] is not False:raise RuntimeError('The pipeline did not confirm the final-payload non-execution boundary.')
@@ -252,9 +260,9 @@ async def policy(request:Request,call_next):
 def health():
     ready=engine_ready()
     with LOCK:active=sum(not j.finished for j in JOBS.values())
-    return JSONResponse({'ok':ready,'engine':'luau-vmp-deobf','commit':ENGINE_COMMIT,'version':'0.5.2','siteVersion':'2.0.0','nativeLuau':'0.739',
-        'adapters':['luraph-v14','closed-luau-1.0.0','native-recovery-2.0.0'],'formatter':'StyLua 2.5.2' if shutil.which('stylua') else None,
-        'recoveryScope':'Native Luau literal/constant cleanup, source formatting and dependency inspection; specialized Luraph/Prometheus-style recovery. Unknown VMs remain partial.',
+    return JSONResponse({'ok':ready,'engine':'luau-vmp-deobf','commit':ENGINE_COMMIT,'version':'0.5.2','siteVersion':'2.1.0','nativeLuau':'0.739',
+        'adapters':['luraph-v14','closed-luau-1.0.0','native-recovery-2.0.0','instrumented-host-trace-1'],'formatter':'StyLua 2.5.2' if shutil.which('stylua') else None,
+        'recoveryScope':'Native Luau cleanup and inspection; specialized VM recovery plus bounded no-network host-surface tracing for VM-shaped wrappers. Unknown VMs remain partial.',
         'activeJobs':active,'maxSourceBytes':MAX_SOURCE,'retentionSeconds':TTL,'thirdPartyUploads':False},status_code=200 if ready else 503)
 
 @app.post('/api/jobs',status_code=202)
