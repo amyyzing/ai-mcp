@@ -183,6 +183,8 @@ function renderJob(job) {
     ['Referenced URLs · not fetched', q.externalUrls ?? '—', ''],
     ['Opaque binary literals', q.opaqueBinaryLiterals ?? '—', ''],
     ['Embedded source candidates', q.embeddedSources ?? '—', ''],
+    ['Host-surface trace', q.hostTraceExecuted ? (q.hostTraceProfilesMatched ? `${q.hostTraceProfiles} profiles matched` : 'Profiles differed') : 'Not run', q.hostTraceExecuted && q.hostTraceProfilesMatched ? 'good' : ''],
+    ['Remote bodies fetched', q.remoteBodiesFetched === true ? 'Yes' : q.remoteBodiesFetched === false ? 'No' : '—', q.remoteBodiesFetched === true ? 'warn' : 'good'],
     ['Native verification', q.nativeRuntime ?? '—', ''],
     ['Observed profiles · not all paths', q.nativeComparisons != null ? `${q.nativeComparisons}/3` : 'Not run', ''],
   ];  $('report-metrics').replaceChildren(...metrics.map(([label,value,cls]) => {
@@ -200,6 +202,7 @@ async function finishJob(job) {
   summary.hidden = !['completed','partial'].includes(job.state);
   summary.textContent = job.quality.outcome === 'unchanged' ? 'No supported source transformation was applied. This is the preserved input, not a devirtualized application.' :
     job.quality.outcome === 'formatted-only' ? 'Layout was improved; no hidden program or encrypted payload was recovered.' :
+    job.quality.behavioralArtifact === job.primary ? 'A bounded no-network trace reconstructed the selected behavior path. Remote bodies were not fetched or executed, and unobserved branches can remain. The preserved and static source artifacts are also available.' :
     `${resultLabel}. Full source is retained. ${job.quality.externalUrls ? 'Referenced remote bodies were not downloaded. ' : ''}${job.state === 'partial' ? 'Remaining recovery gaps are listed below.' : 'Compilation validates syntax, not every runtime behavior.'}`;
   $('export-all').disabled = !job.artifacts.length;
   if (job.artifacts.length) {
