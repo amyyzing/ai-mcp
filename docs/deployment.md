@@ -27,7 +27,7 @@ When `RAILWAY_PROJECT_ID` or `RAILWAY_ENVIRONMENT_ID` is present, the default bi
 
 A valid `RAILWAY_PUBLIC_DOMAIN` is accepted as the hosted service hostname. The Railway healthcheck hostname is accepted only for readiness requests in Railway mode, not as a blanket exception for protected routes. Custom domains should be added to `ROBLOX_MCP_ALLOWED_HOSTS`.
 
-Keep service-specific settings in Railway's deployment settings or your existing infrastructure configuration. This upgrade does not migrate projects, replace deployment settings, create services or automatically publish local changes.
+Keep service-specific settings in Railway's deployment settings or your existing infrastructure configuration. For this shared repository, the MCP service uses Railpack with `npm run build && npm run install:lsp && npm run test:lsp:required`, starts with `npm run start:core`, and checks `/health`. The optional decompiler worker uses Dockerfile `/services/luraph-worker/Dockerfile` and its existing Docker CMD, with `/health`. Preserve existing service environment variables and domains. New `railwayConfigFile` selections are deprecated by Railway; these settings do not require a config-file migration.
 
 ## Release checks
 

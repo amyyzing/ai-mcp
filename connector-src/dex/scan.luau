@@ -9,6 +9,19 @@ local function Integer(value, fallback, minimum, maximum)
     return math.clamp(math.floor(number), minimum, maximum)
 end
 
+local function Short(value, limit)
+    local ok, rendered = pcall(tostring, value)
+    if not ok then return "unavailable" end
+    if #rendered <= limit then return rendered end
+    local last = limit - 3
+    while last > 0 do
+        local byte = string.byte(rendered, last + 1)
+        if byte == nil or byte < 128 or byte >= 192 then break end
+        last -= 1
+    end
+    return string.sub(rendered, 1, last) .. "..."
+end
+
 local function Equal(a, b)
     if type(a) ~= type(b) then return false end
     if type(a) ~= "table" then return a == b end
@@ -162,7 +175,7 @@ function Scan:_record(instance, session, depth)
         for index, property in ipairs(session.options.properties or {}) do
             if index > 20 then break end
             local ok, value = self.inspector:ReadProperty(instance, property, false)
-            if ok and value == session.referenced then table.insert(links, property) end
+            if ok and self.inspector:IsSameInstance(value, session.referenced) then table.insert(links, property) end
         end
         if #links == 0 then return nil end
         local result = self.inspector:Describe(instance)
@@ -173,8 +186,19 @@ function Scan:_record(instance, session, depth)
     if not self:_matches(instance, session) then return nil end
     local result = self.inspector:QueryRecord(instance, session.options)
     result.Depth = depth
-    local parent = instance.Parent
-    if parent then result.ParentHandle = self.inspector:Describe(parent).Handle end
+    -- Parent metadata can fail independently of otherwise readable properties.
+    -- Keep the matching row and report that field, rather than losing the row.
+    local parentOk, parent, parentReason = self.inspector:ReadProperty(instance, "Parent", false)
+    if not parentOk then
+        result.ParentError = Short(parentReason, 240)
+    elseif parent ~= nil then
+        local described, description = pcall(function() return self.inspector:Describe(parent) end)
+        if described and type(description) == "table" and description.Handle ~= nil then
+            result.ParentHandle = description.Handle
+        else
+            result.ParentError = Short(if described then "Parent handle unavailable." else description, 240)
+        end
+    end
     return result
 end
 
@@ -203,7 +227,7 @@ function Scan:_visit(session)
     session.seen[instance] = true
 
     local okChildren, children = pcall(function() return instance:GetChildren() end)
-    if okChildren then
+    if okChildren and type(children) == "table" then
         if #children > 0 then
             if frame.depth >= session.maxDepth then
                 session.depthLimited = true
@@ -224,7 +248,7 @@ function Scan:_visit(session)
     session.matched += 1
     local class = record.ClassName or "Unknown"
     session.counts[class] = (session.counts[class] or 0) + 1
-    if record.PropertyErrorCount or record.AttributeError or record.TagError or record.PropertiesOmitted
+    if record.PropertyErrorCount or record.AttributeError or record.TagError or record.ParentError or record.PropertiesOmitted
         or record.AttributesLimited or record.TagsLimited or record.Truncated then
         session.projectionErrors += 1
     end
@@ -243,6 +267,7 @@ end
 
 function Scan:Query(data, mode)
     mode = mode or "query"
+    local maxChars = Integer(data.maxChars, 20000, 2000, 60000)
     local session
     if data.cursor then
         local id, revision = string.match(data.cursor, "^(.-):(%d+)$")
@@ -250,7 +275,15 @@ function Scan:Query(data, mode)
         session = self:_get(id)
         assert(session.mode == mode, "This cursor belongs to another Dex tool.")
         revision = tonumber(revision)
-        if session.lastInput == revision then return session.lastResponse end
+        if session.lastInput == revision then
+            local cached = session.lastResponse
+            if self.measure(cached) <= maxChars - 350 then return cached end
+            -- Retrying with a smaller budget must not bypass envelope limits or
+            -- mutate the original replay page / retained snapshot projections.
+            local replay = table.clone(cached)
+            replay.results = table.clone(cached.results)
+            return self:_fitEnvelope(replay, "results", maxChars)
+        end
         assert(revision == session.revision and not session.done, "Stale or completed Dex cursor. Use nextCursor from the last response.")
     else
         session = self:_start(data, mode)
@@ -259,7 +292,6 @@ function Scan:Query(data, mode)
     local inputRevision = session.revision
     local limit = Integer(data.limit, 25, 1, 100)
     local scanBudget = Integer(data.scanBudget, 1000, 1, 10000)
-    local maxChars = Integer(data.maxChars, 20000, 2000, 60000)
     local deadline = self.clock() + Integer(data.timeBudgetMs, 8, 1, 50) / 1000
     local results, usedChars, usedEntries, detailsOmitted = {}, 1000, 100, 0
     local startVisited = session.visited
@@ -274,7 +306,7 @@ function Scan:Query(data, mode)
             if serializationReason or bytes + usedChars > maxChars or entries + usedEntries > 850 then
                 if #results > 0 then session.pending = record break end
                 record = {
-                    Handle = record.Handle, Name = string.sub(record.Name or "", 1, 100),
+                    Handle = record.Handle, Name = Short(record.Name or "", 100),
                     ClassName = record.ClassName, omitted = true,
                     reason = serializationReason or "page-budget",
                     note = "Record details omitted; use dex-inspect with fewer fields.",

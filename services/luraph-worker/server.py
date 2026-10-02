@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hmac
+import hashlib
+import base64
 import json
 import os
 import pathlib
@@ -20,6 +22,53 @@ MAX_LOG_CHARS = 8_000
 DEFAULT_TIMEOUT_SECONDS = 180
 MAX_TIMEOUT_SECONDS = 600
 RUN_SLOT = threading.BoundedSemaphore(1)
+MAX_ARTIFACT_BYTES = 4 * 1024 * 1024
+MAX_ARTIFACT_FILES = 128
+
+
+def collect_artifacts(root: pathlib.Path, primary: str) -> tuple[list, list]:
+    """Retain original bytes, not preview text. Never follow output symlinks."""
+    if root.is_symlink():
+        raise RuntimeError("Output directory cannot be a symlink.")
+    artifacts, omitted = [], []
+    remaining = MAX_ARTIFACT_BYTES
+    paths = []
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not (pathlib.Path(directory) / d).is_symlink())
+        for name in sorted(files):
+            path = pathlib.Path(directory) / name
+            if path.is_symlink() or not path.is_file():
+                continue
+            paths.append(path)
+            if len(paths) > MAX_ARTIFACT_FILES:
+                break
+        if len(paths) > MAX_ARTIFACT_FILES:
+            break
+    paths.sort(key=lambda p: (p.relative_to(root).as_posix() != primary, p.as_posix()))
+    for path in paths[:MAX_ARTIFACT_FILES]:
+        name = path.relative_to(root).as_posix()
+        size = path.stat().st_size
+        if size > remaining:
+            omitted.append({"name": name, "reason": "byte-quota", "byteSize": size})
+            continue
+        with path.open("rb") as stream:
+            data = stream.read(remaining + 1)
+        if len(data) > remaining:
+            omitted.append({"name": name, "reason": "byte-quota"})
+            continue
+        remaining -= len(data)
+        representation = ("embedded-source" if name.startswith("embedded") else
+                          "structural-source" if name == "program.decompiled.luau" else
+                          "pseudo-source" if name == "program.pseudo.lua" else
+                          "advisory-source" if name == "program.luaexpert.luau" else "engine-artifact")
+        artifacts.append({"id": str(len(artifacts)), "name": name,
+                          "representation": representation, "validation": "not-independently-validated",
+                          "sha256": hashlib.sha256(data).hexdigest(), "byteSize": len(data),
+                          "lineCount": data.count(b"\n") + 1 if data else 0,
+                          "contentBase64": base64.b64encode(data).decode("ascii")})
+    if len(paths) > MAX_ARTIFACT_FILES:
+        omitted.append({"reason": "file-count-quota", "limit": MAX_ARTIFACT_FILES})
+    return artifacts, omitted
 
 
 def bounded_int(value: Any, fallback: int, minimum: int, maximum: int) -> int:
@@ -62,6 +111,28 @@ def quality_summary(pipeline: Any) -> dict[str, Any]:
     return result
 
 
+def quality_evidence(pipeline: Any) -> list[dict[str, Any]]:
+    """Keep conflicting stage observations instead of choosing the first match."""
+    evidence = []
+    keys = {"compile_checked", "fallback_instructions", "unresolved_dispatcher_conditionals",
+            "bootstrap_executed", "final_payload_executed", "capture_kind",
+            "finalization_error", "finalization_failed", "bootstrap_completed",
+            "prototype_count", "instruction_count"}
+    def visit(value: Any, path: list, depth: int) -> None:
+        if depth > 32 or len(evidence) >= 256:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in keys and not isinstance(child, (dict, list)) and len(evidence) < 256:
+                    evidence.append({"path": path + [key], "value": child})
+                visit(child, path + [key], depth + 1)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, path + [index], depth + 1)
+    visit(pipeline, [], 0)
+    return evidence
+
+
 def read_text(path: pathlib.Path, limit: int) -> tuple[str, int, bool]:
     text = path.read_text(encoding="utf-8", errors="replace")
     total = len(text)
@@ -73,6 +144,8 @@ def read_text(path: pathlib.Path, limit: int) -> tuple[str, int, bool]:
 def recovered_output(
     output_dir: pathlib.Path, max_chars: int
 ) -> tuple[str, str, int, bool]:
+    if output_dir.is_symlink():
+        raise RuntimeError("Output directory cannot be a symlink.")
     candidates = (
         "embedded_main.luau",
         "program.decompiled.luau",
@@ -80,12 +153,14 @@ def recovered_output(
     )
     for name in candidates:
         path = output_dir / name
-        if path.is_file():
+        if path.is_file() and not path.is_symlink():
             source, total, truncated = read_text(path, max_chars)
             return name, source, total, truncated
     embedded_dir = output_dir / "embedded_sources"
-    if embedded_dir.is_dir():
+    if embedded_dir.is_dir() and not embedded_dir.is_symlink():
         for path in sorted(embedded_dir.glob("*.luau")):
+            if path.is_symlink():
+                continue
             source, total, truncated = read_text(path, max_chars)
             return f"embedded_sources/{path.name}", source, total, truncated
     raise RuntimeError("The devirtualizer did not produce a supported source artifact.")
@@ -174,28 +249,50 @@ def run_devirtualizer(payload: dict[str, Any]) -> dict[str, Any]:
             ) from error
 
         log = (completed.stdout + "\n" + completed.stderr).strip()
-        if completed.returncode != 0:
-            detail = log[-MAX_LOG_CHARS:] or f"exit code {completed.returncode}"
-            raise RuntimeError(f"Devirtualizer failed: {detail}")
-
-        output_file, recovered, recovered_chars, truncated = recovered_output(
-            output_dir, max_result_chars
-        )
+        try:
+            output_file, recovered, recovered_chars, truncated = recovered_output(
+                output_dir, max_result_chars
+            )
+        except RuntimeError as error:
+            if completed.returncode != 0:
+                detail = log[-MAX_LOG_CHARS:] or f"exit code {completed.returncode}"
+                raise RuntimeError(f"Devirtualizer failed without recovered source: {detail}") from error
+            raise
         pipeline: Any = {}
         pipeline_path = output_dir / "pipeline.json"
-        if pipeline_path.is_file() and pipeline_path.stat().st_size <= 1024 * 1024:
+        if pipeline_path.is_file() and not pipeline_path.is_symlink() and pipeline_path.stat().st_size <= 1024 * 1024:
             try:
                 pipeline = json.loads(pipeline_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 pipeline = {}
 
+        artifacts, omitted = collect_artifacts(output_dir, output_file)
+        evidence = quality_evidence(pipeline)
+        failures = [item for item in evidence if
+                    (item["path"][-1] in ("finalization_error", "finalization_failed") and item["value"]) or
+                    (item["path"][-1] == "compile_checked" and item["value"] is False)]
+        partial = completed.returncode != 0 or bool(failures)
         return {
+            "schemaVersion": 2,
+            "inputSha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "artifacts": artifacts,
+            "omittedArtifacts": omitted,
+            "retention": {"maxBytes": MAX_ARTIFACT_BYTES, "maxFiles": MAX_ARTIFACT_FILES,
+                          "scope": "MCP-memory-cache", "persistent": False},
+            "recoveryStatus": "partial" if partial else "unverified",
+            "engineExitCode": completed.returncode,
+            "diagnostics": ([{"code": "engine-nonzero-exit", "message": "Engine failed after producing source; artifacts may be intermediate or incomplete."}]
+                            if completed.returncode != 0 else []) +
+                           [{"code": "stage-failure", "evidence": item} for item in failures],
+            "validation": {"semanticEquivalence": "not-tested", "liveRoblox": "not-tested"},
             "ok": True,
             "outputFile": output_file,
             "source": recovered,
             "sourceChars": recovered_chars,
             "sourceTruncated": truncated,
             "quality": quality_summary(pipeline),
+            "qualityEvidence": evidence,
+            "qualityNotice": "Legacy quality fields select the first matching key; consult path-qualified evidence and pipeline.json. Compilation is not semantic equivalence.",
             "log": log[-MAX_LOG_CHARS:],
             "durationMs": round((time.monotonic() - started) * 1000),
         }
@@ -235,6 +332,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": devirtualizer and lune,
                     "service": "luraph-worker",
+                    "schemaVersion": 2,
                     "devirtualizer": devirtualizer,
                     "lune": lune,
                 },

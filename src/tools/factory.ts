@@ -3,7 +3,7 @@ import {
   getInstanceRole,
 } from "../bridge/handlers/shared/communication.js";
 import { resolveTargetClient } from "../bridge/handlers/shared/registry.js";
-import { RobloxResponse } from "../bridge/types.js";
+import type { DispatchResult, RobloxResponse } from "../bridge/types.js";
 import { BASE_URL, WS_PORT } from "../config.js";
 import { bridgeAuthHeaders } from "../http/bridge-auth.js";
 import { readBoundedResponseText } from "../shared/bounded-response.js";
@@ -19,11 +19,16 @@ async function readRelayJson(response: Response): Promise<Record<string, unknown
   if (!response.ok) {
     throw new Error(`Primary returned HTTP ${response.status}: ${raw.slice(0, 300)}`);
   }
+  let data: unknown;
   try {
-    return JSON.parse(raw) as Record<string, unknown>;
+    data = JSON.parse(raw);
   } catch {
     throw new Error(`Primary returned invalid JSON: ${raw.slice(0, 300)}`);
   }
+  if (!isStructuredObject(data)) {
+    throw new Error("Primary returned a non-object JSON response.");
+  }
+  return data;
 }
 
 /**
@@ -82,7 +87,7 @@ export async function relayToolToApi(
     if (data.result !== undefined) {
       const prefix =
         typeof data.clientId === "string" ? clientStampPrefix(data.clientId) : "";
-      const response = toolTextResponse(prefix + String(data.result), outputOptions);
+      const response = toolTextResponse(prefix + String(data.result), outputOptions, data.isError === true);
       if (
         data.structuredContent !== null &&
         typeof data.structuredContent === "object" &&
@@ -142,6 +147,54 @@ export interface ToolTextResponse {
   [x: string]: unknown;
   content: { type: "text"; text: string }[];
   isError?: boolean;
+}
+
+export function isStructuredObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Explicit failures always take precedence over otherwise usable output. */
+export function responseFailed(response: RobloxResponse | undefined): boolean {
+  return !response || response.error !== undefined ||
+    response.success === false || response.isError === true;
+}
+
+/** Older/newer connectors may omit the redundant text copy of structured data. */
+export function responseText(response: RobloxResponse | undefined): string | undefined {
+  if (!response) return undefined;
+  if (typeof response.output === "string") return response.output;
+  if (isStructuredObject(response.structured)) {
+    try {
+      return JSON.stringify(response.structured);
+    } catch {
+      // Malformed, unserializable data is not a successful textual response.
+    }
+  }
+  return undefined;
+}
+
+export function dispatchFailureResponse(
+  dispatch: DispatchResult,
+  clientId?: string
+): ToolTextResponse | undefined {
+  if (dispatch === "INVALID_CLIENT") return INVALID_CLIENT_ERROR;
+  if (dispatch === "AMBIGUOUS_CLIENT") return AMBIGUOUS_CLIENT_ERROR;
+  if (dispatch === "CLIENT_QUEUE_FULL") return CLIENT_QUEUE_FULL_ERROR;
+  if (dispatch === "BRIDGE_BUSY") return BRIDGE_BUSY_ERROR;
+  if (dispatch !== null) return undefined;
+  if (getInstanceRole() === "secondary") {
+    return toolTextResponse(
+      "Could not dispatch through the primary bridge connection. Check the primary connection and runtime-status before retrying; the request was not automatically replayed.",
+      {}, true
+    );
+  }
+  if (resolveTargetClient(clientId)) {
+    return toolTextResponse(
+      "The Roblox client is registered, but dispatch failed. Check its transport and console, then verify whether the operation took effect before retrying. The request was not automatically replayed.",
+      {}, true
+    );
+  }
+  return NO_CLIENT_ERROR;
 }
 /** Selection belongs to one MCP server/session, never the shared core. */
 export interface ToolRoutingContext {
@@ -234,11 +287,16 @@ export function clientStampPrefix(clientId?: string): string {
  * (potentially large) object into the model context.
  */
 export function describeResponse(response: RobloxResponse | undefined): string {
-  if (response === undefined) return "no response (timed out).";
+  if (!response) return "no response (timed out or disconnected); check runtime-status and the operation's outcome before retrying.";
   if (response.error !== undefined) {
     return String(response.error).slice(0, MAX_ERROR_RESPONSE_CHARS);
   }
-  const serialized = JSON.stringify(response);
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(response) ?? "invalid response";
+  } catch {
+    return "unserializable response";
+  }
   return serialized.length > MAX_ERROR_RESPONSE_CHARS
     ? serialized.slice(0, MAX_ERROR_RESPONSE_CHARS) + " …(truncated)"
     : serialized;
@@ -271,24 +329,19 @@ export async function sendAndWait(options: SendAndWaitOptions): Promise<ToolText
     options.timeoutMs
   );
 
-  if (dispatch === null) return NO_CLIENT_ERROR;
-  if (dispatch === "INVALID_CLIENT") return INVALID_CLIENT_ERROR;
-  if (dispatch === "AMBIGUOUS_CLIENT") return AMBIGUOUS_CLIENT_ERROR;
-  if (dispatch === "CLIENT_QUEUE_FULL") return CLIENT_QUEUE_FULL_ERROR;
-  if (dispatch === "BRIDGE_BUSY") return BRIDGE_BUSY_ERROR;
+  const dispatchFailure = dispatchFailureResponse(dispatch, options.clientId);
+  if (dispatchFailure) return dispatchFailure;
 
   const failureField = options.failureField ?? "output";
 
-  const isFailure =
-    response === undefined ||
-    (failureField === "error"
-      ? response.error !== undefined
-      : response.output === undefined);
+  const output = responseText(response);
+  const isFailure = responseFailed(response) ||
+    (output === undefined && (failureField !== "error" || !options.successMessage));
 
   if (isFailure) {
     const text =
       options.failureMessage?.(response) ??
-      `Failed to ${options.type}. Response: ${JSON.stringify(response)}`;
+      `Failed to ${options.type}: ${describeResponse(response)}`;
     return toolTextResponse(
       text,
       {
@@ -300,9 +353,9 @@ export async function sendAndWait(options: SendAndWaitOptions): Promise<ToolText
   }
 
   const text =
-    options.successMessage?.(response) ?? (response.output as string);
+    options.successMessage?.(response!) ?? output!;
   const stamped = options.stampClient
-    ? clientStampPrefix(response.clientId ?? options.clientId) + text
+    ? clientStampPrefix(response!.clientId ?? options.clientId) + text
     : text;
   return toolTextResponse(stamped, {
     maxOutputChars: options.maxOutputChars,

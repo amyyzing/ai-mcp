@@ -34,6 +34,8 @@ function HandleRegistry.new(options)
         order = {},
         orderCursor = 1,
         reverse = setmetatable({}, { __mode = "k" }),
+        instanceBuckets = {},
+        compareInstances = options.CompareInstances or compareinstances,
         weakValues = setmetatable({}, { __mode = "v" }),
         strongValues = {},
         maxHandles = ClampInteger(options.MaxHandles, 50000, 100, 200000),
@@ -57,6 +59,11 @@ function HandleRegistry:_remove(handle, reason)
     local entry = self.entries[handle]
     if entry == nil then return false end
     self.entries[handle] = nil
+    if entry.instanceKey then
+        local bucket = self.instanceBuckets[entry.instanceKey]
+        bucket[handle] = nil
+        if next(bucket) == nil then self.instanceBuckets[entry.instanceKey] = nil end
+    end
     self.activeCount = math.max(0, self.activeCount - 1)
     local value = self.strongValues[handle] or self.weakValues[handle]
     self.strongValues[handle] = nil
@@ -111,12 +118,37 @@ function HandleRegistry:_evictOldest()
     return false
 end
 
+function HandleRegistry:IsSameInstance(left, right)
+    if left == right then return true end
+    if left == nil or right == nil or type(self.compareInstances) ~= "function" then return false end
+    local ok, same = pcall(self.compareInstances, left, right)
+    return ok and same == true
+end
+
 function HandleRegistry:Register(value, kind, metadata, ttlSeconds, pinValue)
     assert(value ~= nil, "Cannot create a runtime handle for nil.")
     self:Sweep()
 
+    kind = kind or Classify(value)
     local existingHandle = self.reverse[value]
     local existing = existingHandle and self.entries[existingHandle] or nil
+    local instanceKey
+    if not existing and kind == "instance" then
+        local ok, key = pcall(function() return value:GetDebugId() end)
+        if ok and type(key) == "string" and key ~= "" then instanceKey = key end
+    end
+    -- Cloned references can hash differently. A debug ID narrows candidates;
+    -- only native equality can establish that an alias is the same Instance.
+    if not existing and instanceKey then
+        for handle in self.instanceBuckets[instanceKey] or {} do
+            local candidate = self.strongValues[handle] or self.weakValues[handle]
+            if candidate ~= nil and self:IsSameInstance(candidate, value) then
+                existingHandle, existing = handle, self.entries[handle]
+                self.reverse[value] = handle
+                break
+            end
+        end
+    end
     if existing then
         local now = self:_now()
         existing.lastAccess = now
@@ -138,7 +170,8 @@ function HandleRegistry:Register(value, kind, metadata, ttlSeconds, pinValue)
     local now = self:_now()
     local entry = {
         handle = handle,
-        kind = kind or Classify(value),
+        kind = kind,
+        instanceKey = instanceKey,
         generation = self.generation,
         createdAt = now,
         lastAccess = now,
@@ -147,6 +180,11 @@ function HandleRegistry:Register(value, kind, metadata, ttlSeconds, pinValue)
         pinned = pinValue ~= false,
     }
     self.entries[handle] = entry
+    if instanceKey then
+        local bucket = self.instanceBuckets[instanceKey] or {}
+        self.instanceBuckets[instanceKey] = bucket
+        bucket[handle] = true
+    end
     self.activeCount += 1
     table.insert(self.order, handle)
     self.weakValues[handle] = value
@@ -201,7 +239,7 @@ function HandleRegistry:Unpin(handle)
 end
 
 function HandleRegistry:Describe(handle)
-    local _, entry = self:Resolve(handle)
+    local _, entry = self:Resolve(handle, nil, false)
     return {
         handle = entry.handle,
         kind = entry.kind,

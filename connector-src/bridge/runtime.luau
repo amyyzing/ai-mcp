@@ -69,6 +69,7 @@ while true do
         require("./handlers/signal-connections"),
         require("./handlers/unified-input"),
         require("./handlers/wait-for-event"),
+        require("./handlers/observation"),
     }
     local cleanups = {}
     local handlersOk, handlersError = pcall(function()
@@ -76,19 +77,16 @@ while true do
             local cleanup = registerHandlers(context, Bridge)
             if type(cleanup) == "function" then table.insert(cleanups, cleanup) end
         end
+        Bridge.Ready = true
         Bridge:WaitForDisconnect()
     end)
+    Bridge:Disconnect()
     for index = #cleanups, 1, -1 do pcall(cleanups[index]) end
 
     if ScriptMappingPipeline.bridge == Bridge then
         ScriptMappingPipeline.bridge = nil
     end
     if not handlersOk then
-        Bridge.Connected = false
-        for _, thread in { Bridge.AliveThread, Bridge.PollThread } do
-            pcall(task.cancel, thread)
-        end
-        pcall(function() if Bridge.WebSocket then Bridge.WebSocket:Close() end end)
         error(handlersError, 0)
     end
     task.wait(1)

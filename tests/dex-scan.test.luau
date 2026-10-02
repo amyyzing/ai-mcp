@@ -10,6 +10,7 @@ local function Node(name, class)
     function instance:GetChildren()
         self.childReads += 1
         if self.failChildren then error("children unavailable") end
+        if self.invalidChildren then return nil end
         return table.clone(self.children)
     end
     function instance:GetDescendants() error("unbounded enumeration must not be used") end
@@ -29,7 +30,10 @@ local function Parent(child, parent)
 end
 
 local function Path(instance)
-    return if instance.Parent then Path(instance.Parent) .. "." .. instance.Name else instance.Name
+    -- Test descriptors remain available even when the optional engine Parent
+    -- read throws, matching Inspector's bounded descriptor fallback.
+    local parent = rawget(instance, "Parent")
+    return if parent then Path(parent) .. "." .. instance.Name else instance.Name
 end
 
 local function Typed(value)
@@ -53,6 +57,9 @@ local function Fixture(options)
     local registry = {}
     for _, instance in ipairs({ root, a, b, a1, a2, b1 }) do registry[instance.Handle] = instance end
     local Inspector = {}
+    function Inspector:IsSameInstance(left, right)
+        return type(left) == "table" and type(right) == "table" and left.Handle == right.Handle
+    end
     function Inspector:Resolve(target)
         if target == "workspace" or (type(target) == "table" and target.path == "workspace") then return root end
         local handle = if type(target) == "table" then target.handle else target
@@ -65,7 +72,10 @@ local function Fixture(options)
     function Inspector:ReadProperty(instance, property, hidden)
         assert(hidden == false, "scan must not invoke hidden properties")
         if property == "Unavailable" then return false, nil, "unavailable" end
-        if property == "Parent" then return true, instance.Parent, "ordinary" end
+        if property == "Parent" then
+            local ok, parent = pcall(function() return instance.Parent end)
+            return ok, if ok then parent else nil, if ok then "ordinary" else parent
+        end
         return true, instance.properties[property], "ordinary"
     end
     function Inspector:QueryRecord(instance, data)
@@ -177,6 +187,27 @@ failed.a.failChildren = true
 local _, failedEnd = Drain(failed.scan, {})
 assert(failedEnd.done and not failedEnd.complete and failedEnd.readErrors == 1)
 failed.scan:Destroy()
+
+local invalidChildren = Fixture()
+invalidChildren.a.invalidChildren = true
+local invalidRows, invalidEnd = Drain(invalidChildren.scan, {})
+assert(#invalidRows == 4 and invalidEnd.done and not invalidEnd.complete and invalidEnd.readErrors == 1,
+    "invalid child enumeration must report incomplete traversal without stranding the scan")
+invalidChildren.scan:Destroy()
+
+local parentFailure = Fixture()
+parentFailure.a1.Parent = nil
+setmetatable(parentFailure.a1, { __index = function(_, key)
+    if key == "Parent" then error("Parent engine read failed") end
+    return nil
+end })
+local parentRows, parentEnd = Drain(parentFailure.scan, { filters = { className = "Part" }, retainSnapshot = true })
+assert(#parentRows == 1 and parentRows[1].Handle == parentFailure.a1.Handle,
+    "an optional Parent failure must not discard a matched instance")
+assert(parentRows[1].ParentError and parentRows[1].ParentHandle == nil)
+assert(parentEnd.complete and parentEnd.projectionErrors == 1 and not parentEnd.projectionComplete)
+Reject(function() parentFailure.scan:Snapshots({ operation = "diff", beforeId = parentEnd.snapshotId, afterId = parentEnd.snapshotId }) end, "fully captured")
+parentFailure.scan:Destroy()
 
 local cursors = Fixture()
 local firstPage = cursors.scan:Query({ limit = 1 })
@@ -300,6 +331,13 @@ assert(string.find(refEnd.coverage, "Only supplied", 1, true), "incoming referen
 assert(refEnd.snapshotId == nil and refEnd.retainedRecords == 0, "references cannot retain incomparable snapshots")
 references.scan:Destroy()
 
+local clonedReferences = Fixture()
+clonedReferences.b1.properties.Value = table.clone(clonedReferences.a1)
+local cloneRows = Drain(clonedReferences.scan, { target = clonedReferences.a1.Handle, properties = { "Value" } }, "references")
+assert(#cloneRows == 1 and cloneRows[1].Handle == clonedReferences.b1.Handle,
+    "references must recognize a native alias of the requested target")
+clonedReferences.scan:Destroy()
+
 local filters = Fixture()
 local tagRows = Drain(filters.scan, { filters = { isA = "Part", tag = "Inspectable", attribute = { name = "Enabled", equals = true } } })
 assert(#tagRows == 1 and tagRows[1].Handle == filters.a1.Handle)
@@ -418,6 +456,46 @@ local function AssertWirePage(page)
     assert(JsonBytes(page) + 350 <= 2000, "full scan envelope must reserve 350 bytes for transport stamps")
     AssertSanitizerShape(page)
 end
+
+local replayBudget = Fixture({ Measure = JsonBytes })
+replayBudget.a.properties.Note = string.rep("x", 2500)
+local replayFirst = replayBudget.scan:Query({ properties = { "Note" }, limit = 1, retainSnapshot = true })
+local replayFull = replayBudget.scan:Query({ cursor = replayFirst.nextCursor, limit = 1 })
+assert(JsonBytes(replayFull) + 350 > 2000 and replayFull.results[1].Properties.Note.value)
+local replaySmall = replayBudget.scan:Query({ cursor = replayFirst.nextCursor, maxChars = 2000 })
+AssertWirePage(replaySmall)
+assert(replaySmall.nextCursor == replayFull.nextCursor and replaySmall.results[1].Handle == replayFull.results[1].Handle)
+assert(replaySmall.results[1].omitted and not replaySmall.detailsComplete)
+assert(not replayFull.results[1].omitted and replayFull.results[1].Properties.Note.value,
+    "a smaller retry must not modify the cached page or retained projection")
+assert(replayBudget.scan:Query({ cursor = replayFirst.nextCursor }) == replayFull,
+    "the original full replay remains available at the original budget")
+local replayNext = replayBudget.scan:Query({ cursor = replaySmall.nextCursor, limit = 1 })
+assert(replayNext.results[1].Handle == replayBudget.a1.Handle)
+replayBudget.scan:Destroy()
+
+local function Utf8Measure(value)
+    local function check(item)
+        if type(item) == "string" then
+            assert(utf8.len(item) ~= nil, "JSON measurement received invalid UTF-8")
+        elseif type(item) == "table" then
+            for key, child in pairs(item) do check(key) check(child) end
+        end
+    end
+    check(value)
+    return if type(value) == "table" and value.recordBytes then value.recordBytes else JsonBytes(value)
+end
+local unicode = Fixture({ Measure = Utf8Measure })
+unicode.root.Name = "A" .. string.rep("é", 60)
+unicode.root.recordBytes = 5000
+local unicodePage = unicode.scan:Query({ limit = 1, maxChars = 2000 })
+assert(unicodePage.results[1].omitted and unicodePage.results[1].Handle == unicode.root.Handle)
+assert(utf8.len(unicodePage.results[1].Name) ~= nil and #unicodePage.results[1].Name <= 100,
+    "oversized-row fallbacks must not cut UTF-8 names in the middle of a codepoint")
+AssertWirePage(unicodePage)
+assert(unicode.scan:Query({ cursor = unicodePage.nextCursor, limit = 1 }).results[1].Handle == unicode.a.Handle)
+unicode.scan:Destroy()
+
 for index, instance in ipairs({ wire.root, wire.a, wire.b, wire.a1, wire.a2, wire.b1 }) do
     instance.Name = string.rep("long-name-", 12) .. index
     instance.Handle = "rh_123456789abcdef0_1_" .. index

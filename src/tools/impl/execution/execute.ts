@@ -55,6 +55,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
         stampClient: true,
         failureMessage: (response) => {
           const detail = describeResponse(response);
+          if (response?.delivery === "not-delivered") return `Execution was not delivered; the expired command was removed from the HTTP queue. ${detail}`;
           return detail.includes("Timed out waiting")
             ? `Execution acknowledgement timed out; the outcome is unknown. ${detail}`
             : `Execution failed: ${detail}`;

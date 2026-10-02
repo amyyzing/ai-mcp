@@ -15,6 +15,7 @@ local ScriptMappingPipeline = context.ScriptMappingPipeline
     end
 
     Bridge:BindToTypeStructured("runtime-status", function(_data)
+        local httpStatus = context.HttpRequestStatus and context.HttpRequestStatus() or nil
         local workerState
         if ScriptMappingPipeline.workers then
             workerState = {
@@ -32,6 +33,8 @@ local ScriptMappingPipeline = context.ScriptMappingPipeline
             clientId = Bridge.ClientId,
             transport = Bridge.WebSocket and "ws" or "http",
             connected = Bridge.Connected == true,
+            commands = Bridge:GetCommandStatus(),
+            antiAfk = context.AntiAFK and context.AntiAFK.GetStatus() or nil,
             place = {
                 placeId = game.PlaceId,
                 gameId = game.GameId,
@@ -69,7 +72,8 @@ local ScriptMappingPipeline = context.ScriptMappingPipeline
             },
             capabilities = {
                 request = context.RequestAvailable == true,
-                requestProvider = context.HttpRequestProvider,
+                requestProvider = httpStatus and httpStatus.provider or context.HttpRequestProvider,
+                httpTransport = httpStatus,
                 websocket = context.WebSocketAvailable == true,
                 loadstring = type(loadstring) == "function",
                 setthreadidentity = type(setthreadidentity) == "function",

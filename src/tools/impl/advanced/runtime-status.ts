@@ -88,7 +88,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
     {
       title: "Get Roblox MCP runtime status and capabilities",
       description:
-        "Probe the selected client and report routing identity, transport, measured round-trip latency, pending calls, source-sync health, decompiler health, mapping state, and executor capability flags.",
+        "Probe the selected client and report routing identity, transport, measured round-trip latency, pending calls, connector command readiness/limits/failures, source-sync health, decompiler health, mapping state, and executor capability flags.",
       inputSchema: z.object({ clientId: clientIdSchema }),
       outputSchema,
       annotations: {

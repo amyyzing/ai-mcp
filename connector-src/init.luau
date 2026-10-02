@@ -70,6 +70,7 @@ local HttpService: HttpService = cloneref(game:GetService("HttpService"))
 local LogService: LogService = cloneref(game:GetService("LogService"))
 local Players: Players = cloneref(game:GetService("Players"))
 local TweenService: TweenService = cloneref(game:GetService("TweenService"))
+local VirtualUser = cloneref(game:GetService("VirtualUser"))
 
 --// Libraries \\--
 
@@ -240,7 +241,9 @@ end
 local getnilinstances = getnilinstances or function() return {} end
 
 --// Compatibility Check \\--
-local ExecutorRequest, HttpRequestProvider = require("./runtime/executor-http").Resolve(getgenv())
+local ExecutorRequest, HttpRequestProvider, HttpRequestStatus = require("./runtime/executor-http").Resolve(getgenv(), {
+    ProbeUrl = BridgeHTTPURL,
+})
 
 -- Executors expose WebSocket under several common names. Resolve the actual
 -- connect function once, then let the bridge test whether it can really open.
@@ -328,6 +331,7 @@ local RuntimeCapabilities = require("./runtime/capabilities").new({
     ConnectorVersion = "3",
     RequestAvailable = ExecutorRequest ~= nil,
     HttpRequestProvider = HttpRequestProvider,
+    HttpRequestStatus = HttpRequestStatus,
     WebSocketAvailable = WebSocketAvailable,
 })
 local GcExplorer = require("./runtime/gc-explorer").new({
@@ -457,6 +461,14 @@ end
 
 getgenv().MCP_Loaded = true
 getgenv().MCP_Loading = nil
+while Players.LocalPlayer == nil do Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end
+local AntiAFK = require("./runtime/anti-afk")({
+    Player = Players.LocalPlayer,
+    KeepAlive = function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.zero)
+    end,
+})
 local runtimeSuccess, runtimeError = pcall(function()
     require("./bridge/runtime")({
         CreateBridge = CreateBridge,
@@ -479,14 +491,17 @@ local runtimeSuccess, runtimeError = pcall(function()
         WebSocketAvailable = WebSocketAvailable,
         RequestAvailable = ExecutorRequest ~= nil,
         HttpRequestProvider = HttpRequestProvider,
+        HttpRequestStatus = HttpRequestStatus,
         RuntimeHandles = RuntimeHandles,
         RuntimeValues = RuntimeValues,
         RuntimeCapabilities = RuntimeCapabilities,
         GcExplorer = GcExplorer,
         ToastHost = ToastHost,
+        AntiAFK = AntiAFK,
     })
 end)
 if not runtimeSuccess then
+    AntiAFK.Destroy()
     getgenv().MCP_Loaded = nil
     getgenv().MCP_Loading = nil
     error(runtimeError)

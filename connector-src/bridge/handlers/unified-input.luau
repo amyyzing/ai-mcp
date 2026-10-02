@@ -1,9 +1,44 @@
 local InstancePath = require("../instance-path")
+local InputController = require("../../runtime/input-controller")
 
 return function(context, Bridge)
 local VirtualInputManager = context.VirtualInputManager
 local Players = context.Players
 local UserInputService = game:GetService("UserInputService")
+local clientInput
+local focused
+local function isFocused()
+    if type(isrbxactive) == "function" then
+        local ok, active = pcall(isrbxactive)
+        if ok and type(active) == "boolean" then return active end
+    end
+    return focused
+end
+context.IsInputFocused = isFocused
+-- Probe the actual capability: some clients expose this API outside Studio too.
+pcall(function() clientInput = UserInputService:CreateVirtualInput() end)
+local controller = InputController.new({
+    VirtualInputManager = VirtualInputManager, VirtualInput = clientInput,
+    UserInputService = UserInputService, Game = game, Enum = Enum,
+    ExecutorInputAllowed = function() return isFocused() == true end,
+    Environment = { mousemoveabs = mousemoveabs, mousemoverel = mousemoverel,
+        mouse1press = mouse1press, mouse1release = mouse1release,
+        mouse2press = mouse2press, mouse2release = mouse2release,
+        keypress = keypress, keyrelease = keyrelease, mousescroll = mousescroll, firesignal = firesignal },
+    Record = function(id, provider, ok)
+        if context.RuntimeCapabilities.RecordUse then context.RuntimeCapabilities:RecordUse(id, provider, ok) end
+    end,
+})
+context.InputController = controller
+local focusLost = UserInputService.WindowFocusReleased:Connect(function() focused = false controller:ReleaseAll(true) end)
+local focusGained = UserInputService.WindowFocused:Connect(function() focused = true end)
+local function result(fields)
+    fields.dispatch = "accepted"
+    fields.backend = controller.backend
+    fields.cursor = controller:State()
+    fields.expectedEffectObserved = nil
+    return fields
+end
 
     local function MousePosition(data)
         if data.x ~= nil or data.y ~= nil then
@@ -46,7 +81,7 @@ local UserInputService = game:GetService("UserInputService")
             local number = tonumber(functionNumber)
             if number and number >= 1 and number <= 12 then return 0x6F + number end
         end
-        return keyCode.Value
+        error("No verified executor virtual-key mapping for " .. name)
     end
 
     local function SendKey(data)
@@ -56,24 +91,8 @@ local UserInputService = game:GetService("UserInputService")
         local repeatCount = math.max(1, math.min(math.floor(tonumber(data.repeatCount) or 1), 20))
         local durationSeconds = math.max(0, math.min((tonumber(data.durationMs) or 40) / 1000, 2))
         durationSeconds = math.min(durationSeconds, 10 / repeatCount)
-        local fallbackUsed = false
-
-        local function Send(isDown)
-            local ok = pcall(function()
-                VirtualInputManager:SendKeyEvent(isDown, keyCode, false, game)
-            end)
-            if ok then return end
-
-            fallbackUsed = true
-            local executorCode = KeyCodeForExecutor(keyCode)
-            if isDown then
-                assert(type(keypress) == "function", "VirtualInputManager and keypress both failed/unavailable.")
-                keypress(executorCode)
-            else
-                assert(type(keyrelease) == "function", "VirtualInputManager and keyrelease both failed/unavailable.")
-                keyrelease(executorCode)
-            end
-        end
+        local mapped, executorCode = pcall(KeyCodeForExecutor, keyCode)
+        local function Send(isDown) controller:Key(keyCode, if mapped then executorCode else nil, isDown) end
 
         for _ = 1, repeatCount do
             if state == "down" then
@@ -86,12 +105,12 @@ local UserInputService = game:GetService("UserInputService")
                 Send(false)
             end
         end
-        return { status = "sent", action = "key", key = keyCode.Name, state = state, fallbackUsed = fallbackUsed }
+        return result({ status = "sent", action = "key", key = keyCode.Name, state = state })
     end
 
     local function SendText(data)
         local text = tostring(data.text or "")
-        assert(#text <= 2000, "Text input is limited to 2000 characters.")
+        assert(utf8.len(text) and utf8.len(text) <= 2000 and #text <= 8000, "Text input requires up to 2000 UTF-8 characters.")
         local textBox
         if data.target then
             textBox = InstancePath.Resolve(data.target)
@@ -100,27 +119,15 @@ local UserInputService = game:GetService("UserInputService")
             task.wait()
         end
 
-        local fallbackUsed = false
-        local ok = pcall(function()
-            for index = 1, #text do
-                VirtualInputManager:SendTextInput(string.sub(text, index, index), nil, game)
-                if index % 100 == 0 then task.wait() end
-            end
-        end)
-        if not ok then
-            assert(textBox, "VirtualInputManager text input failed and no TextBox fallback target was supplied.")
-            textBox.Text = text
-            fallbackUsed = true
-        end
+        assert(not textBox or UserInputService:GetFocusedTextBox() == textBox, "Text focus changed before dispatch.")
+        local method = controller:Text(text, textBox, data.allowPropertyFallback == true)
 
         if data.submit == true then
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
-            end)
+            if not textBox then SendKey({ key = "Return" }) end
         end
         if textBox then textBox:ReleaseFocus(data.submit == true) end
-        return { status = "sent", action = "text", characters = #text, submitted = data.submit == true, fallbackUsed = fallbackUsed }
+        return result({ status = "sent", action = "text", characters = utf8.len(text), bytes = #text,
+            submitted = data.submit == true, method = method, fallbackUsed = method == "property-assignment" })
     end
 
     local function SendMouse(data)
@@ -129,30 +136,11 @@ local UserInputService = game:GetService("UserInputService")
         local button = data.button or "left"
         local buttonIndex = ({ left = 0, right = 1, middle = 2 })[button]
         assert(buttonIndex ~= nil, "Unsupported mouse button.")
-        local fallbackUsed = false
-
         if event == "move" then
-            local ok = pcall(function() VirtualInputManager:SendMouseMoveEvent(x, y, game) end)
-            if not ok then
-                assert(type(mousemoveabs) == "function", "Mouse movement is unsupported by this executor.")
-                mousemoveabs(x, y)
-                fallbackUsed = true
-            end
+            controller:Move(x, y, data.relative == true)
         else
             local function SendButton(isDown)
-                local ok = pcall(function()
-                    VirtualInputManager:SendMouseButtonEvent(x, y, buttonIndex, isDown, game, 0)
-                end)
-                if ok then return end
-                fallbackUsed = true
-                local fallbackNames = {
-                    left = { down = mouse1press, up = mouse1release },
-                    right = { down = mouse2press, up = mouse2release },
-                }
-                local callbacks = fallbackNames[button]
-                local callback = callbacks and callbacks[isDown and "down" or "up"]
-                assert(type(callback) == "function", "Mouse button input is unsupported by this executor.")
-                callback()
+                controller:Button(button, isDown, x, y)
             end
 
             if event == "down" then
@@ -168,25 +156,15 @@ local UserInputService = game:GetService("UserInputService")
             end
         end
 
-        return { status = "sent", action = "mouse", event = event, button = button, x = x, y = y, fallbackUsed = fallbackUsed }
+        return result({ status = "sent", action = "mouse", event = event, button = button, x = x, y = y })
     end
 
     local function SendScroll(data)
         local x, y = MousePosition(data)
         local clicks = math.max(1, math.min(math.floor(tonumber(data.clicks) or 1), 50))
         local isForward = data.direction == "up"
-        local fallbackUsed = false
-        for _ = 1, clicks do
-            local ok = pcall(function()
-                VirtualInputManager:SendMouseWheelEvent(x, y, isForward, game)
-            end)
-            if not ok then
-                assert(type(mousescroll) == "function", "Mouse wheel input is unsupported by this executor.")
-                mousescroll(isForward and 1 or -1)
-                fallbackUsed = true
-            end
-        end
-        return { status = "sent", action = "scroll", direction = data.direction, clicks = clicks, fallbackUsed = fallbackUsed }
+        controller:Scroll(x, y, clicks, isForward)
+        return result({ status = "sent", action = "scroll", direction = data.direction, clicks = clicks, x = x, y = y })
     end
 
     local function FirePrompt(data)
@@ -237,7 +215,7 @@ local UserInputService = game:GetService("UserInputService")
         }
     end
 
-    Bridge:BindToTypeStructured("input", function(data)
+    local function dispatch(data)
         if data.action == "key" then return SendKey(data) end
         if data.action == "text" then return SendText(data) end
         if data.action == "mouse" then return SendMouse(data) end
@@ -246,5 +224,19 @@ local UserInputService = game:GetService("UserInputService")
         if data.action == "click-detector" then return FireDetector(data) end
         if data.action == "touch" then return FireTouch(data) end
         error("Unsupported input action: " .. tostring(data.action))
-    end)
+    end
+    context.DispatchInput = function(data, owner)
+        assert(not context.InputOwner or context.InputOwner == owner, "Another MCP action owns input; cancel it or wait.")
+        local ok, value = pcall(dispatch, data)
+        if not ok then controller:ReleaseAll() error(value, 0) end
+        return value
+    end
+    Bridge:BindToTypeStructured("input", function(data) return context.DispatchInput(data) end)
+    return function()
+        controller.closed = true
+        controller:ReleaseAll()
+        focusLost:Disconnect()
+        focusGained:Disconnect()
+        if context.InputController == controller then context.InputController = nil context.DispatchInput = nil context.IsInputFocused = nil end
+    end
 end

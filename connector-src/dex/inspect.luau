@@ -115,6 +115,11 @@ function Inspector:_size(value)
     return estimated, entries
 end
 
+function Inspector:IsSameInstance(left, right)
+    if self.Typeof(left) ~= "Instance" or self.Typeof(right) ~= "Instance" then return false end
+    return self.Handles:IsSameInstance(left, right)
+end
+
 function Inspector:_budget(chars, entries)
     return { chars = math.max(0, chars - 300), entries = math.max(0, entries - 20), limited = false }
 end
@@ -386,14 +391,28 @@ function Inspector:_ancestry(instance, data, record, budget)
     local ancestors, clipping = {}, {}
     local current, checked, hidden, complete = instance, 0, false, false
     local ancestorCount = 0
+    local visibilityErrors, visibilityErrorCount, visibilityUnknown = {}, 0, false
+    local function visibilityError(property, reason, affectsVisibility)
+        visibilityErrorCount += 1
+        if affectsVisibility then visibilityUnknown = true end
+        local detail = { AncestorIndex = checked, Property = property, Error = Short(reason, 180) }
+        if #visibilityErrors < 4 and self:_take(budget, detail) then table.insert(visibilityErrors, detail) end
+    end
     -- Visibility needs more ancestry than the optional displayed breadcrumb.
     for _ = 1, 64 do
         checked += 1
         if gui then
-            if self:_isA(current, "GuiObject") then
-                local ok, visible = self:ReadProperty(current, "Visible", false)
+            local classOk, isGui, isLayer = pcall(function()
+                return current:IsA("GuiObject"), current:IsA("LayerCollector")
+            end)
+            if not classOk then
+                visibilityError("IsA", isGui, true)
+            elseif isGui then
+                local ok, visible, reason = self:ReadProperty(current, "Visible", false)
                 if ok and visible == false then hidden = true end
-                local clipOk, clips = self:ReadProperty(current, "ClipsDescendants", false)
+                if not ok then visibilityError("Visible", reason, true) end
+                local clipOk, clips, clipReason = self:ReadProperty(current, "ClipsDescendants", false)
+                if not clipOk then visibilityError("ClipsDescendants", clipReason, false) end
                 if current ~= instance and clipOk and clips == true and #clipping < 4 then
                     local description = self:Describe(current)
                     local clip = { Handle = description.Handle, Name = description.Name }
@@ -403,13 +422,17 @@ function Inspector:_ancestry(instance, data, record, budget)
                     end
                     if self:_take(budget, clip) then table.insert(clipping, clip) end
                 end
-            elseif self:_isA(current, "LayerCollector") then
-                local ok, enabled = self:ReadProperty(current, "Enabled", false)
+            elseif isLayer then
+                local ok, enabled, reason = self:ReadProperty(current, "Enabled", false)
                 if ok and enabled == false then hidden = true end
+                if not ok then visibilityError("Enabled", reason, true) end
             end
         end
-        local parentOk, parent = self:ReadProperty(current, "Parent", false)
-        if not parentOk then break end
+        local parentOk, parent, parentReason = self:ReadProperty(current, "Parent", false)
+        if not parentOk then
+            if gui then visibilityError("Parent", parentReason, true) end
+            break
+        end
         if parent == nil then complete = true break end
         if self.Typeof(parent) ~= "Instance" then break end
         ancestorCount += 1
@@ -427,11 +450,16 @@ function Inspector:_ancestry(instance, data, record, budget)
     end
     if gui then
         record.Visibility = {
-            EffectiveVisible = if hidden then false elseif complete then true else nil,
+            EffectiveVisible = if hidden then false elseif complete and not visibilityUnknown then true else nil,
             AncestorsChecked = checked,
-            Limited = not complete,
+            Limited = not complete or visibilityErrorCount > 0,
             Basis = "Local Visible/Enabled ancestry only; not occlusion, transparency, viewport intersection, or screenshot visibility.",
         }
+        if visibilityErrorCount > 0 then
+            record.Visibility.ReadErrorCount = visibilityErrorCount
+            record.Visibility.Errors = visibilityErrors
+            record.Visibility.ErrorsOmitted = visibilityErrorCount - #visibilityErrors
+        end
         if #clipping > 0 then record.Visibility.ClippingAncestors = clipping end
     end
 end
@@ -486,12 +514,14 @@ function Inspector:_inspectOne(instance, data, chars, entries)
                 local childOk, child = pcall(function() return self:Describe(children[index]) end)
                 if childOk then
                     child.FullName = nil
-                    if not self:_take(budget, child) then break end
-                    table.insert(projected, child)
                 else
                     budget.limited = true
-                    break
+                    -- Keep the failed position explicit so paging can reach later
+                    -- children instead of retrying this same offset forever.
+                    child = { ChildIndex = index, Error = Short(child, 240) }
                 end
+                if not self:_take(budget, child) then break end
+                table.insert(projected, child)
             end
             record.ChildCount = #children
             record.ChildOffset = offset

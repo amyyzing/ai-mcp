@@ -63,6 +63,9 @@ local b={}
 
 local function AddCandidate(c,d,e)
 if type(e)=="function"then
+for f,g in ipairs(c)do
+if g.callback==e then return end
+end
 table.insert(c,{
 provider=d,
 callback=e,
@@ -75,51 +78,84 @@ assert(type(c)=="table","Executor HTTP API returned a non-table response.")
 local d=tonumber(
 c.StatusCode or c.Status or c.status_code or c.status
 )
-assert(d~=nil,"Executor HTTP response did not include a status code.")
+assert(d~=nil and d>=100 and d<=599 and d%1==0,
+"Executor HTTP response did not include a valid status code.")
+local e=c.Body or c.body or c.ResponseBody or""
+assert(type(e)=="string","Executor HTTP response body was not a string.")
 return{
 StatusCode=d,
-Body=c.Body or c.body or c.ResponseBody or"",
+Body=e,
 Headers=c.Headers or c.headers or{},
 }
 end
 
-function b.Resolve(c)
-c=c or getgenv()
-local d={}
-AddCandidate(d,"request",c.request)
-AddCandidate(d,"http_request",c.http_request)
-AddCandidate(d,"httprequest",c.httprequest)
+local function NormalizeOptions(c)
+local d=table.clone(c)
+for e,f in ipairs{{"Url","url"},{"Method","method"},{"Headers","headers"},{"Body","body"}}do
+local g=c[f[1] ]or c[f[2] ]
+if f[1]=="Headers"and type(g)=="table"then g=table.clone(g)end
+d[f[1] ],d[f[2] ]=g,g
+end
+return d
+end
 
-for e,f in{
+function b.Resolve(c,d)
+c=c or getgenv()
+d=d or{}
+local e={}
+AddCandidate(e,"request",c.request)
+AddCandidate(e,"http_request",c.http_request)
+AddCandidate(e,"httprequest",c.httprequest)
+
+for f,g in{
 {name="http.request",owner=c.http},
 {name="syn.request",owner=c.syn},
 {name="fluxus.request",owner=c.fluxus},
 {name="krnl.request",owner=c.krnl},
 }do
-if typeof(f.owner)=="table"then
-AddCandidate(d,f.name,f.owner.request)
+if typeof(g.owner)=="table"then
+AddCandidate(e,g.name,g.owner.request)
 end
 end
 
-for e,f in d do
-local g=f.callback
-local function Request(h)
-local i={}
-for j,k in h do
-i[j]=k
+local f,g,h=1,false,0
+local function GetStatus()
+return{
+provider=e[f]and e[f].provider or"unavailable",
+candidates=#e,
+responseValidated=g,
+failedRequests=h,
+}
 end
-i.url=i.url or i.Url
-i.method=i.method or i.Method
-i.headers=i.headers or i.Headers
-i.body=i.body or i.Body
-local j,k=pcall(g,i)
-assert(j,k)
-return NormalizeResponse(k)
+if#e==0 then return nil,"unavailable",GetStatus end
+
+local function Request(i)
+assert(type(i)=="table","Executor HTTP options must be a table.")
+local j=i.Url or i.url
+local k=string.upper(tostring(i.Method or i.method or"GET"))
+
+
+local l=d.ProbeUrl~=nil and j==d.ProbeUrl and k=="GET"
+local m=f
+for n=0,(if l then#e-1 else 0)do
+local o=((m+n-1)%#e)+1
+local p=e[o]
+local q,r=pcall(function()
+return NormalizeResponse(p.callback(NormalizeOptions(i)))
+end)
+if q then
+f,g=o,true
+
+return r
 end
-return Request,f.provider
+g=false
+h+=1
 end
 
-return nil,"unavailable"
+error(if l then"No executor HTTP API passed the bridge reachability probe."
+else"Executor HTTP provider "..e[f].provider.." failed or returned an invalid response; request was not replayed.")
+end
+return Request,e[f].provider,GetStatus
 end
 
 return b end function a.b():typeof(__modImpl())local b=a.cache.b if not b then b={c=__modImpl()}a.cache.b=b end return b.c end end do local function __modImpl()
@@ -160,6 +196,8 @@ activeCount=0,
 order={},
 orderCursor=1,
 reverse=setmetatable({},{__mode="k"}),
+instanceBuckets={},
+compareInstances=c.CompareInstances or compareinstances,
 weakValues=setmetatable({},{__mode="v"}),
 strongValues={},
 maxHandles=ClampInteger(c.MaxHandles,50000,100,200000),
@@ -183,6 +221,11 @@ function b._remove(c,d,e)
 local f=c.entries[d]
 if f==nil then return false end
 c.entries[d]=nil
+if f.instanceKey then
+local g=c.instanceBuckets[f.instanceKey]
+g[d]=nil
+if next(g)==nil then c.instanceBuckets[f.instanceKey]=nil end
+end
 c.activeCount=math.max(0,c.activeCount-1)
 local g=c.strongValues[d]or c.weakValues[d]
 c.strongValues[d]=nil
@@ -237,16 +280,41 @@ end
 return false
 end
 
+function b.IsSameInstance(c,d,e)
+if d==e then return true end
+if d==nil or e==nil or type(c.compareInstances)~="function"then return false end
+local f,g=pcall(c.compareInstances,d,e)
+return f and g==true
+end
+
 function b.Register(c,d,e,f,g,h)
 assert(d~=nil,"Cannot create a runtime handle for nil.")
 c:Sweep()
 
+e=e or Classify(d)
 local i=c.reverse[d]
 local j=i and c.entries[i]or nil
+local k
+if not j and e=="instance"then
+local l,m=pcall(function()return d:GetDebugId()end)
+if l and type(m)=="string"and m~=""then k=m end
+end
+
+
+if not j and k then
+for l in c.instanceBuckets[k]or{}do
+local m=c.strongValues[l]or c.weakValues[l]
+if m~=nil and c:IsSameInstance(m,d)then
+i,j=l,c.entries[l]
+c.reverse[d]=l
+break
+end
+end
+end
 if j then
-local k=c:_now()
-j.lastAccess=k
-j.expiresAt=k+ClampInteger(g,c.defaultTtlSeconds,30,7200)
+local l=c:_now()
+j.lastAccess=l
+j.expiresAt=l+ClampInteger(g,c.defaultTtlSeconds,30,7200)
 if f~=nil then j.metadata=f end
 if h~=false then
 c.strongValues[i]=d
@@ -260,26 +328,32 @@ assert(c:_evictOldest(),"Runtime handle registry is full and could not evict an 
 end
 
 c.nextId+=1
-local k=string.format("rh_%s_%d_%d",c.registryId,c.generation,c.nextId)
-local l=c:_now()
-local m={
-handle=k,
-kind=e or Classify(d),
+local l=string.format("rh_%s_%d_%d",c.registryId,c.generation,c.nextId)
+local m=c:_now()
+local n={
+handle=l,
+kind=e,
+instanceKey=k,
 generation=c.generation,
-createdAt=l,
-lastAccess=l,
-expiresAt=l+ClampInteger(g,c.defaultTtlSeconds,30,7200),
+createdAt=m,
+lastAccess=m,
+expiresAt=m+ClampInteger(g,c.defaultTtlSeconds,30,7200),
 metadata=f,
 pinned=h~=false,
 }
-c.entries[k]=m
+c.entries[l]=n
+if k then
+local o=c.instanceBuckets[k]or{}
+c.instanceBuckets[k]=o
+o[l]=true
+end
 c.activeCount+=1
-table.insert(c.order,k)
-c.weakValues[k]=d
-if h~=false then c.strongValues[k]=d end
-c.reverse[d]=k
+table.insert(c.order,l)
+c.weakValues[l]=d
+if h~=false then c.strongValues[l]=d end
+c.reverse[d]=l
 c.created+=1
-return k,m
+return l,n
 end
 
 function b.Resolve(c,d,e,f)
@@ -327,7 +401,7 @@ return true
 end
 
 function b.Describe(c,d)local
-e, f=c:Resolve(d)
+e, f=c:Resolve(d,nil,false)
 return{
 handle=f.handle,
 kind=f.kind,
@@ -1025,10 +1099,14 @@ return{
 id=c,
 available=d==true,
 provider=e,
-quality=d and(f or"best-effort")or"degraded",
+quality=d and"best-effort"or"degraded",
 testedAtUnixMs=TimestampMillis(),
 limits=g,
-degradedReason=d and nil or(h or"API is not exposed by this executor."),
+degradedReason=if d then nil else(h or"API is not exposed by this executor."),
+detected=d==true,
+evidence="presence-only",
+probeExecuted=false,
+behaviorVerified=false,
 }
 end
 
@@ -1057,15 +1135,29 @@ return setmetatable({
 connectorVersion=tostring(c.ConnectorVersion or"1"),
 RequestAvailable=c.RequestAvailable==true,
 HttpRequestProvider=tostring(c.HttpRequestProvider or"unavailable"),
+HttpRequestStatus=c.HttpRequestStatus,
 WebSocketAvailable=c.WebSocketAvailable==true,
+usage={},
 },b)
+end
+
+function b.RecordUse(c,d,e,f,g)
+local h=c.usage[d]or{}
+c.usage[d]={
+provider=e,probeExecuted=true,behaviorVerified=g==true,
+evidence=if g then"observed-effect"elseif f then"dispatch-returned"else"dispatch-failed",
+lastAttemptAtUnixMs=TimestampMillis(),
+lastSuccessfulUseAtUnixMs=if f then TimestampMillis()else h.lastSuccessfulUseAtUnixMs,
+currentFailure=if f then nil else"Provider invocation failed.",
+}
 end
 
 function b.Probe(c)
 local d=type(debug)=="table"and debug or{}
-local e={
-Descriptor("transport.request",c.RequestAvailable,c.HttpRequestProvider,"exact"),
-Descriptor("transport.websocket",c.WebSocketAvailable,"executor-api","exact"),
+local e=c.HttpRequestStatus and c.HttpRequestStatus()or nil
+local f={
+Descriptor("transport.request",c.RequestAvailable,e and e.provider or c.HttpRequestProvider,"best-effort"),
+Descriptor("transport.websocket",c.WebSocketAvailable,"executor-api","best-effort"),
 Descriptor("script.loadstring",IsFunction(loadstring),"executor-api","exact"),
 Descriptor("script.decompile",IsFunction(decompile),"executor-api","best-effort"),
 Descriptor("script.bytecode",IsFunction(getscriptbytecode),"executor-api","best-effort"),
@@ -1108,28 +1200,37 @@ Descriptor("input.fire-click-detector",IsFunction(fireclickdetector),"executor-a
 Descriptor("input.fire-touch",IsFunction(firetouchinterest),"executor-api","best-effort"),
 }
 
-local f={}
-local g=0
-for h,i in e do
-local j=string.match(i.id,"^([^.]+)")or"other"
-f[j]=f[j]or{available=0,unavailable=0}
-if i.available then
-g+=1
-f[j].available+=1
-else
-f[j].unavailable+=1
+local g={}
+local h=0
+for i,j in f do
+local k=c.usage[j.id]
+if k then for l,m in pairs(k)do j[l]=m end end
+if j.id=="transport.request"and e and e.responseValidated then
+j.evidence="validated-http-response"
+j.probeExecuted=true
+j.behaviorVerified=true
 end
-i.connectorVersion=c.connectorVersion
+local l=string.match(j.id,"^([^.]+)")or"other"
+g[l]=g[l]or{available=0,unavailable=0}
+if j.available then
+h+=1
+g[l].available+=1
+else
+g[l].unavailable+=1
+end
+j.connectorVersion=c.connectorVersion
 end
 
 return{
 executor=ExecutorIdentity(),
 connectorVersion=c.connectorVersion,
 testedAtUnixMs=TimestampMillis(),
-available=g,
-unavailable=#e-g,
-byCategory=f,
-capabilities=e,
+available=h,
+unavailable=#f-h,
+byCategory=g,
+capabilities=f,
+httpTransport=e,
+providerUses=c.usage,
 }
 end
 
@@ -1884,413 +1985,515 @@ local m=b.SanitizeForOutput
 local n=b.LuaEncode
 local o=0
 local p=30
+local q=32
+local r=256
 
-local function EncodeBridgeResponse(q)
-local r,s=pcall(function()
-return c:JSONEncode(q)
+local function EncodeBridgeResponse(s)
+local t,u=pcall(function()
+return c:JSONEncode(s)
 end)
-if r then return s end
+if t then return u end
 return c:JSONEncode{
-id=type(q)=="table"and q.id or nil,
+id=type(s)=="table"and s.id or nil,
 success=false,
-error="Failed to serialize connector response: "..string.sub(tostring(s),1,300),
+error="Failed to serialize connector response: "..string.sub(tostring(u),1,300),
 }
 end
 
 
-local q={};do
-q.__index=q
+local s={};do
+s.__index=s
 
-function q.BindToType(r,s,t)
-r.Callbacks[s]=t
+function s.GetCommandStatus(t)
+local u,v=0,0
+for w,x in pairs(t.CommandThreads or{})do
+u+=1
+v=math.max(v,os.clock()-x.startedAt)
 end
-
-function q.BindToTypeRaw(r,s,t)
-r.Callbacks[s]=t
-r.RawCallbacks=r.RawCallbacks or{}
-r.RawCallbacks[s]=true
-end
-
-function q.BindToTypeStructured(r,s,t)
-r.Callbacks[s]=t
-r.StructuredCallbacks=r.StructuredCallbacks or{}
-r.StructuredCallbacks[s]=true
-end
-
-function q.CreateAlias(r,s,t)
-for u,v in t do
-r.Callbacks[v]=r.Callbacks[s]
-if r.RawCallbacks and r.RawCallbacks[s]then
-r.RawCallbacks[v]=true
-end
-if r.StructuredCallbacks and r.StructuredCallbacks[s]then
-r.StructuredCallbacks[v]=true
-end
-end
+return{
+ready=t.Ready==true,active=u,maximum=q,
+workMaximum=q-1,
+oldestRunningSeconds=v,
+completed=t.CommandsCompleted or 0,failed=t.CommandsFailed or 0,
+duplicates=t.CommandDuplicates or 0,rejected=t.CommandsRejected or 0,
+responseFailures=t.ResponseFailures or 0,cancelled=t.CommandsCancelled or 0,
+cancellationFailures=t.CancellationFailures or 0,
+}
 end
 
-function q.HandleMessage(r,s)
-if r.Callbacks[s.type]then
-local t,u=pcall(function()
-return r.Callbacks[s.type](s)
+function s.SendResponse(t,u)
+if not t.Connected or u==nil then return end
+local v=pcall(function()
+if t.WebSocket then
+t.WebSocket:Send(EncodeBridgeResponse(u))
+else
+u.clientId=t.ClientId
+local v=h{
+Url=d.."/respond?clientId="..c:UrlEncode(t.ClientId),
+Method="POST",
+Headers=g{["Content-Type"]="application/json"},
+Body=EncodeBridgeResponse(u),
+}
+assert(v.StatusCode==200 or v.StatusCode==204,"Bridge rejected response.")
+end
+end)
+if not v then t.ResponseFailures=(t.ResponseFailures or 0)+1 end
+
+end
+
+function s.DispatchMessage(t,u)
+if not t.Connected or type(u)~="table"or type(u.type)~="string"
+or type(u.id)~="string"or u.id==""or#u.id>160 then return end
+t.CommandThreads=t.CommandThreads or{}
+t.RecentCommands=t.RecentCommands or{}
+t.RecentCommandOrder=t.RecentCommandOrder or{}
+if t.CommandThreads[u.id]or t.RecentCommands[u.id]then
+t.CommandDuplicates=(t.CommandDuplicates or 0)+1
+if t.RecentCommands[u.id]then
+t:SendResponse(t:FormatResponse("Request already completed; it was not replayed. Inspect the outcome before issuing a new request.",u.id,true))
+end
+return
+end
+local v
+
+local w=u.type=="runtime-status"and q or q-1
+if not t.Ready then v="Connector is still initializing; no command was executed."
+elseif t:GetCommandStatus().active>=w then
+v="Connector command limit reached; no command was executed. Wait for running commands to finish."
+end
+if v then
+t.CommandsRejected=(t.CommandsRejected or 0)+1
+t:SendResponse(t:FormatResponse(v,u.id,true))
+return
+end
+local x=coroutine.create(function()
+local x,y=pcall(t.HandleMessage,t,u)
+if not x then y=t:FormatResponse(y,u.id,true)end
+t.CommandsCompleted=(t.CommandsCompleted or 0)+1
+if y and y.success==false then t.CommandsFailed=(t.CommandsFailed or 0)+1 end
+t.RecentCommands[u.id]=true
+table.insert(t.RecentCommandOrder,u.id)
+if#t.RecentCommandOrder>r then
+t.RecentCommands[table.remove(t.RecentCommandOrder,1)]=nil
+end
+t:SendResponse(y)
+t.CommandThreads[u.id]=nil
 end)
 
-if t and u==nil then
+t.CommandThreads[u.id]={thread=x,startedAt=os.clock()}
+task.spawn(x)
+end
+
+function s.Disconnect(t)
+t.Connected=false
+t.Ready=false
+for u,v in pairs(t.CommandThreads or{})do
+t.CommandThreads[u]=nil
+if v.thread~=coroutine.running()then
+local w=pcall(task.cancel,v.thread)
+if w then t.CommandsCancelled=(t.CommandsCancelled or 0)+1
+else t.CancellationFailures=(t.CancellationFailures or 0)+1 end
+end
+end
+for u,v in{"AliveThread","AliveProbeThread","PollThread"}do
+local w=t[v]
+t[v]=nil
+if w and w~=coroutine.running()then pcall(task.cancel,w)end
+end
+for u,v in pairs(t.Connections or{})do pcall(function()v:Disconnect()end)end
+t.Connections={}
+if t.WebSocket then pcall(function()t.WebSocket:Close()end)end
+end
+
+function s.BindToType(t,u,v)
+t.Callbacks[u]=v
+end
+
+function s.BindToTypeRaw(t,u,v)
+t.Callbacks[u]=v
+t.RawCallbacks=t.RawCallbacks or{}
+t.RawCallbacks[u]=true
+end
+
+function s.BindToTypeStructured(t,u,v)
+t.Callbacks[u]=v
+t.StructuredCallbacks=t.StructuredCallbacks or{}
+t.StructuredCallbacks[u]=true
+end
+
+function s.CreateAlias(t,u,v)
+for w,x in v do
+t.Callbacks[x]=t.Callbacks[u]
+if t.RawCallbacks and t.RawCallbacks[u]then
+t.RawCallbacks[x]=true
+end
+if t.StructuredCallbacks and t.StructuredCallbacks[u]then
+t.StructuredCallbacks[x]=true
+end
+end
+end
+
+function s.HandleMessage(t,u)
+if t.Callbacks[u.type]then
+local v,w=pcall(function()
+return t.Callbacks[u.type](u)
+end)
+
+if v and w==nil then
 return nil
 end
 
-if not t then
-return r:FormatResponse(u,s.id,true)
+if not v then
+return t:FormatResponse(w,u.id,true)
 end
 
-if r.RawCallbacks and r.RawCallbacks[s.type]then
+if t.RawCallbacks and t.RawCallbacks[u.type]then
 return{
-output=tostring(u),
+output=tostring(w),
 success=true,
-id=s.id
+id=u.id
 }
 end
 
-return r:FormatResponse(
-u,
-s.id,
+return t:FormatResponse(
+w,
+u.id,
 false,
-r.StructuredCallbacks and r.StructuredCallbacks[s.type]==true
+t.StructuredCallbacks and t.StructuredCallbacks[u.type]==true
 )
 end
-return nil
+return t:FormatResponse(
+"Unsupported connector command: "..string.sub(tostring(u.type),1,100)
+..". Reload the current MCP connector in this client.",
+u.id,
+true
+)
 end
 
-function q.FormatResponse(r,s,t,u,v)
-if u then
+function s.FormatResponse(t,u,v,w,x)
+if w then
 return{
-error=tostring(s),
+error=tostring(u),
 success=false,
-id=t
+id=v
 }
 end
 
-local w=m(s)
-if typeof(w)~="table"then
-w={w}
+local y=m(u)
+if typeof(y)~="table"then
+y={y}
 end
 
-local x={
-output=n(w,{
+local z={
+output=n(y,{
 Prettify=false
 }),
 success=true,
-id=t
+id=v
 }
-if v then
-x.structured=w
+if x then
+z.structured=y
 end
-return x
+return z
 end
 
-function q.IsAlive(r)
-local s,t=pcall(function()
-local s
-local t=task.spawn(function()
-local t,u
+function s.IsAlive(t)
+local u,v=pcall(function()
+local u
+local v=task.spawn(function()
+local v,w
 if h then
-t,u=pcall(h,{
+v,w=pcall(h,{
 Url=d,
 Method="GET",
 Headers=g()
 })
 else
-t,u=pcall(function()
+v,w=pcall(function()
 return{StatusCode=200,Body=i(d)}
 end)
 end
 
-if t then
-s=u
+if v then
+u=w
 end
 end)
+t.AliveProbeThread=v
 
-local u=os.clock()
-repeat task.wait(0.05)until s~=nil or os.clock()-u>5
+local w=os.clock()
+repeat task.wait(0.05)until u~=nil or os.clock()-w>5
+if t.AliveProbeThread==v then t.AliveProbeThread=nil end
 
-if s==nil then
-task.cancel(t)
+if u==nil then
+task.cancel(v)
 return false
 end
 
 
-if s.StatusCode==426 or s.StatusCode==200 then
+if u.StatusCode==426 or u.StatusCode==200 then
 return true
 end
 
 return false
 end)
 
-if not s then
+if not u then
 return false
 end
 
-return t
+return v
 end
 end
 
 
-local r=setmetatable({},{__index=q});do
-r.__index=r
+local t=setmetatable({},{__index=s});do
+t.__index=t
 
-function r.new()
-local s=setmetatable({},r)
+function t.new()
+local u=setmetatable({},t)
 
 
-local t=0.5
-local u=5
-local v=10
-local w=0
+local v=0.5
+local w=5
+local x=10
+local y=0
 
-while not s:IsAlive()do
-w+=1
-if w>=v then
-error("Failed to connect to bridge server after "..v.." attempts")
+while not u:IsAlive()do
+y+=1
+if y>=x then
+error("Failed to connect to bridge server after "..x.." attempts")
 end
-task.wait(t)
-t=math.min(t*1.5,u)
+task.wait(v)
+v=math.min(v*1.5,w)
 end
 
 
-local x
-local y=false
-local z=task.spawn(function()
-local z,A=pcall(function()
-local z=e
+local z
+local A=false
+local B=task.spawn(function()
+local B,C=pcall(function()
+local B=e
 if f~=""then
-z..="?token="..c:UrlEncode(f)
+B..="?token="..c:UrlEncode(f)
 end
-return k(z)
+return k(B)
 end)
-if z then
-x=A
+if B then
+z=C
 end
-y=true
+A=true
 end)
 
-local A=os.clock()
-repeat task.wait(0.05)until x~=nil or y or os.clock()-A>5
+local C=os.clock()
+repeat task.wait(0.05)until z~=nil or A or os.clock()-C>5
 
-if x==nil then
-if not y then
-task.cancel(z)
+if z==nil then
+if not A then
+task.cancel(B)
 end
-error(y and"WebSocket connection failed"or"WebSocket connection timed out after 5 seconds")
+error(A and"WebSocket connection failed"or"WebSocket connection timed out after 5 seconds")
 end
 
-s.WebSocket=x
-s.Connected=true
-s.Callbacks={}
-s.ClientId=nil
+u.WebSocket=z
+u.Connected=true
+u.Callbacks={}
+u.ClientId=nil
+u.Connections={}
 
 
-s.WebSocket:Send(c:JSONEncode(l()))
+local D=pcall(function()
+u.Connections.message=u.WebSocket.OnMessage:Connect(function(D)
+local E,F=pcall(function()return c:JSONDecode(D)end)
+if not E or type(F)~="table"then return end
+if F.type=="registered"then
+if type(F.clientId)~="string"or F.clientId==""
+or type(F.clientToken)~="string"or F.clientToken==""then return end
+u.ClientId=F.clientId
+u.ClientToken=F.clientToken
+getgenv().MCP_ClientToken=F.clientToken
+return
+end
+u:DispatchMessage(F)
+end)
+u.Connections.close=u.WebSocket.OnClose:Connect(function()
+u.Connected=false
+end)
+u.WebSocket:Send(c:JSONEncode(l()))
+local D=os.clock()+5
+while u.Connected and not u.ClientId and os.clock()<D do task.wait(0.05)end
+assert(u.Connected and u.ClientId,"WebSocket registration was not acknowledged.")
+end)
+if not D then
+u:Disconnect()
+error"WebSocket registration failed or timed out; trying HTTP transport."
+end
 
-s.AliveThread=task.spawn(function()
-local B=0
+u.AliveThread=task.spawn(function()
+local E=0
 while task.wait(1)do
-if not s.Connected then
+if not u.Connected then
+break
+end
+
+if u:IsAlive()then
+E=0
 continue
 end
 
-if s:IsAlive()then
-B=0
+E+=1
+if E<3 then
 continue
 end
 
-B+=1
-if B<3 then
-continue
-end
-
-s.Connected=false
+u.Connected=false
 break
 end
 
 pcall(function()
-s.WebSocket:Close()
+u.WebSocket:Close()
 end)
 end)
 
-
-s.WebSocket.OnMessage:Connect(function(B)
-local C=c:JSONDecode(B)
-
-
-if C.type=="registered"then
-s.ClientId=C.clientId
-s.ClientToken=C.clientToken
-getgenv().MCP_ClientToken=C.clientToken
-return
+return u
 end
 
-local D=s:HandleMessage(C)
-if D then
-s.WebSocket:Send(EncodeBridgeResponse(D))
-end
-end)
-
-
-s.WebSocket.OnClose:Connect(function()
-s.Connected=false
-end)
-
-return s
-end
-
-function r.WaitForDisconnect(s)
-while s.Connected do
+function t.WaitForDisconnect(u)
+while u.Connected do
 task.wait(0.1)
 end
+u:Disconnect()
 end
 end
 
 
-local s=setmetatable({},{__index=q});do
-s.__index=s
+local u=setmetatable({},{__index=s});do
+u.__index=u
 
-function s.new()
+function u.new()
 assert(h,"This executor exposes neither a working WebSocket nor a supported HTTP request API.")
-local t=setmetatable({},s)
+local v=setmetatable({},u)
 
 
-local u=0.5
-local v=5
-local w=10
-local x=0
+local w=0.5
+local x=5
+local y=10
+local z=0
 
-while not t:IsAlive()do
-x+=1
-if x>=w then
-error("Failed to connect to bridge server after "..w.." attempts")
+while not v:IsAlive()do
+z+=1
+if z>=y then
+error("Failed to connect to bridge server after "..y.." attempts")
 end
-task.wait(u)
-u=math.min(u*1.5,v)
+task.wait(w)
+w=math.min(w*1.5,x)
 end
 
-t.Connected=true
-t.Callbacks={}
-t.PollInterval=0.1
-t.ClientId=nil
+v.Connected=true
+v.Callbacks={}
+v.PollInterval=0.1
+v.ClientId=nil
 
 
-local y,z=pcall(function()
-local y=h{
+local A,B=pcall(function()
+local A=h{
 Url=d.."/register",
 Method="POST",
 Headers=g{["Content-Type"]="application/json"},
 Body=c:JSONEncode(l()),
 }
-if y.StatusCode==200 and y.Body then
-local z=c:JSONDecode(y.Body)
-t.ClientId=z.clientId
-t.ClientToken=z.clientToken
-getgenv().MCP_ClientToken=z.clientToken
+if A.StatusCode==200 and A.Body then
+local B=c:JSONDecode(A.Body)
+v.ClientId=B.clientId
+v.ClientToken=B.clientToken
+getgenv().MCP_ClientToken=B.clientToken
 end
 end)
-if not y or type(t.ClientId)~="string"or type(t.ClientToken)~="string"then
-t.Connected=false
-error("Bridge HTTP registration failed: "..tostring(z or"server rejected registration"))
+if not A or type(v.ClientId)~="string"or v.ClientId==""
+or type(v.ClientToken)~="string"or v.ClientToken==""then
+v.Connected=false
+error("Bridge HTTP registration failed: "..tostring(B or"server rejected registration"))
 end
 
 
-t.PollThread=task.spawn(function()
-local A=0
+v.PollThread=task.spawn(function()
+local C=0
 
-while t.Connected do
-local B=false local
-C=pcall(function()
-local C=d.."/poll"
-if t.ClientId then
-C=C.."?clientId="..t.ClientId
+while v.Connected do
+local D=false local
+E=pcall(function()
+local E=d.."/poll"
+if v.ClientId then
+E=E.."?clientId="..v.ClientId
 end
-local D=h{
-Url=C,
+local F=h{
+Url=E,
 Method="GET",
 Headers=g()
 }
 
 
-if D.StatusCode~=204 and D.StatusCode~=200 then
-A+=1
-if A>=3 then
-t.Connected=false
+if F.StatusCode~=204 and F.StatusCode~=200 then
+C+=1
+if C>=3 then
+v.Connected=false
 end
 
 return
 end
 
-A=0
+C=0
 
 
-if D.Body and D.Body~=""then
-local E=c:JSONDecode(D.Body)
-local F={}
-if typeof(E)=="table"and E.type==nil and#E>0 then
-F=E
-elseif typeof(E)=="table"and E.type~=nil then
-F={E}
+if F.Body and F.Body~=""then
+local G=c:JSONDecode(F.Body)
+local H={}
+if typeof(G)=="table"and G.type==nil and#G>0 then
+H=G
+elseif typeof(G)=="table"and G.type~=nil then
+H={G}
 end
 
-for G,H in ipairs(F)do
-B=true
-task.spawn(function()
-local I=t:HandleMessage(H)
-if I==nil then return end
-I.clientId=t.ClientId
-
-
-h{
-Url=d.."/respond?clientId="..c:UrlEncode(t.ClientId),
-Method="POST",
-Headers=g{
-["Content-Type"]="application/json"
-},
-Body=EncodeBridgeResponse(I)
-}
-end)
+for I,J in ipairs(H)do
+D=true
+v:DispatchMessage(J)
 end
 end
 end)
 
-if not C then
-A+=1
-if A>=3 then
-t.Connected=false
+if not E then
+C+=1
+if C>=3 then
+v.Connected=false
 end
 end
 
-if not B then
-task.wait(t.PollInterval)
+if not D then
+task.wait(v.PollInterval)
 end
 end
 end)
 
-return t
+return v
 end
 
-function s.WaitForDisconnect(t)
-while t.Connected do
+function u.WaitForDisconnect(v)
+while v.Connected do
 task.wait(0.1)
 end
+v:Disconnect()
 end
 end
 
 
 local function CreateBridge()
 if j and os.clock()>=o then
-local t,u=pcall(function()
-return r.new()
+local v,w=pcall(function()
+return t.new()
 end)
 
-if t then
+if v then
 o=0
-return u
+return w
 end
 
 
@@ -2298,7 +2501,7 @@ end
 o=os.clock()+p
 end
 
-return s.new()
+return u.new()
 end
 
 return{
@@ -4357,6 +4560,48 @@ StartScriptMapping=StartScriptMapping,
 }
 end end function a.t():typeof(__modImpl())local b=a.cache.t if not b then b={c=__modImpl()}a.cache.t=b end return b.c end end do local function __modImpl()
 
+
+return function(b)
+local c=b.Environment or getgenv()
+local d=c.RobloxMCPAntiAFK
+if type(d)=="table"and d.Version==1
+and d.Connection and d.Connection.Connected then return d end
+
+local e={Version=1,Enabled=false,Attempts=0,Succeeded=0,Failed=0}
+function e.Pulse()
+if not e.Enabled then return false end
+e.Attempts+=1
+local f,g=pcall(b.KeepAlive)
+if f then
+e.Succeeded+=1
+e.LastError=nil
+else
+e.Failed+=1
+e.LastError=string.sub(tostring(g),1,240)
+end
+return f
+end
+function e.GetStatus()
+return{enabled=e.Enabled and e.Connection~=nil and e.Connection.Connected,
+backend="virtual-user",attempts=e.Attempts,succeeded=e.Succeeded,
+failed=e.Failed,lastError=e.LastError}
+end
+function e.Destroy()
+e.Enabled=false
+if e.Connection then e.Connection:Disconnect()e.Connection=nil end
+if c.RobloxMCPAntiAFK==e then c.RobloxMCPAntiAFK=nil end
+end
+local f,g=pcall(function()return b.Player.Idled:Connect(e.Pulse)end)
+if f then
+e.Connection=g
+e.Enabled=true
+else
+e.LastError=string.sub(tostring(g),1,240)
+end
+c.RobloxMCPAntiAFK=e
+return e
+end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
+
 return function(b,c)
 local d=b.LogService
 
@@ -4472,11 +4717,13 @@ end)
 
 c:BindToType("get-data-by-code",function(e)
 setthreadidentity(8)
-local f=table.pack(loadstring(e.source)())
+local f,g=loadstring(e.source)
+assert(f,"Failed to compile data source: "..tostring(g))
+local h=table.pack(f())
 
-return f
+return h
 end)
-end end function a.u():typeof(__modImpl())local b=a.cache.u if not b then b={c=__modImpl()}a.cache.u=b end return b.c end end do local function __modImpl()
+end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -4564,7 +4811,7 @@ end
 
 return"-- Lines "..r.."-"..t.." of "..o.."\n"..table.concat(u,"\n")..x
 end)
-end end function a.v():typeof(__modImpl())local b=a.cache.v if not b then b={c=__modImpl()}a.cache.v=b end return b.c end end do local function __modImpl()
+end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 local c=false
@@ -4801,7 +5048,7 @@ u.Note="Traversal work/time budget reached, including unmatched nodes. Use dex-q
 end
 return u
 end)
-end end function a.w():typeof(__modImpl())local b=a.cache.w if not b then b={c=__modImpl()}a.cache.w=b end return b.c end end do local function __modImpl()
+end end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
 
 local b={}
 
@@ -5091,9 +5338,9 @@ end)
 return o,true
 end
 
-return b end function a.x():typeof(__modImpl())local b=a.cache.x if not b then b={c=__modImpl()}a.cache.x=b end return b.c end end do local function __modImpl()
+return b end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
 
-local b=a.x()
+local b=a.y()
 
 return function(c,d)
 d:BindToType("ensure-remote-spy",function(e)
@@ -5227,7 +5474,7 @@ count=#m,
 results=m
 }
 end)
-end end function a.y():typeof(__modImpl())local b=a.cache.y if not b then b={c=__modImpl()}a.cache.y=b end return b.c end end do local function __modImpl()
+end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local function GetRemoteIdentity(d)
@@ -5397,7 +5644,7 @@ end
 
 error("Invalid remote-spy operation: "..tostring(e))
 end)
-end end function a.z():typeof(__modImpl())local b=a.cache.z if not b then b={c=__modImpl()}a.cache.z=b end return b.c end end do local function __modImpl()
+end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -5431,6 +5678,7 @@ for m=1,#h do
 local n=h:sub(m,m):upper()
 local o=n:byte()
 if o then
+assert(c.IsInputFocused and c.IsInputFocused()==true,"Client-local typing unavailable; desktop fallback is disabled in the background.")
 keypress(o)
 task.wait(0.01)
 if type(keyrelease)=="function"then
@@ -5445,7 +5693,7 @@ end
 
 if i then
 if j then
-if type(keypress)=="function"then
+if type(keypress)=="function"and c.IsInputFocused and c.IsInputFocused()==true then
 keypress(0x0D)
 task.wait(0.01)
 if type(keyrelease)=="function"then
@@ -5496,7 +5744,7 @@ status="success",
 message="Successfully fired click signals on Button."
 }
 end)
-end end function a.A():typeof(__modImpl())local b=a.cache.A if not b then b={c=__modImpl()}a.cache.A=b end return b.c end end do local function __modImpl()
+end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -5515,9 +5763,10 @@ return math.max(0,d.upload.tail-d.upload.head+1)
 end
 
 c:BindToTypeStructured("runtime-status",function(e)
-local f
+local f=b.HttpRequestStatus and b.HttpRequestStatus()or nil
+local g
 if d.workers then
-f={
+g={
 configured=d.configuredWorkers,
 currentLimit=d.currentWorkers,
 active=d.workers.ActiveWorkers,
@@ -5532,6 +5781,8 @@ return{
 clientId=c.ClientId,
 transport=c.WebSocket and"ws"or"http",
 connected=c.Connected==true,
+commands=c:GetCommandStatus(),
+antiAfk=b.AntiAFK and b.AntiAFK.GetStatus()or nil,
 place={
 placeId=game.PlaceId,
 gameId=game.GameId,
@@ -5557,7 +5808,7 @@ uploadQueue={
 items=PendingUploadCount(),
 bytes=d.upload.bytes,
 },
-workers=f,
+workers=g,
 sourceCache={
 entries=d.sourceCacheEntries,
 bytes=d.sourceCacheBytes,
@@ -5569,7 +5820,8 @@ limitBytes=d.sourceBudgetBytes,
 },
 capabilities={
 request=b.RequestAvailable==true,
-requestProvider=b.HttpRequestProvider,
+requestProvider=f and f.provider or b.HttpRequestProvider,
+httpTransport=f,
 websocket=b.WebSocketAvailable==true,
 loadstring=type(loadstring)=="function",
 setthreadidentity=type(setthreadidentity)=="function",
@@ -5595,7 +5847,7 @@ getgenv().Cobalt.__RobloxMcpInternal==true and"bundled"or"external"
 },
 }
 end)
-end end function a.B():typeof(__modImpl())local b=a.cache.B if not b then b={c=__modImpl()}a.cache.B=b end return b.c end end do local function __modImpl()
+end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -5697,7 +5949,7 @@ end
 
 return g
 end)
-end end function a.C():typeof(__modImpl())local b=a.cache.C if not b then b={c=__modImpl()}a.cache.C=b end return b.c end end do local function __modImpl()
+end end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
 
 
 
@@ -5814,6 +6066,11 @@ local i,j=pcall(e.Measure,f)
 if i and type(j)=="number"and j>=0 then return j,h end
 end
 return g,h
+end
+
+function b.IsSameInstance(e,f,g)
+if e.Typeof(f)~="Instance"or e.Typeof(g)~="Instance"then return false end
+return e.Handles:IsSameInstance(f,g)
 end
 
 function b._budget(e,f,g)
@@ -6087,39 +6344,57 @@ local l=Clamp(g.ancestorLimit,8,0,32)
 local m,n={},{}
 local o,p,q,r=f,0,false,false
 local s=0
+local t,u,v={},0,false
+local function visibilityError(w,x,y)
+u+=1
+if y then v=true end
+local z={AncestorIndex=p,Property=w,Error=Short(x,180)}
+if#t<4 and e:_take(i,z)then table.insert(t,z)end
+end
 
-for t=1,64 do
+for w=1,64 do
 p+=1
 if j then
-if e:_isA(o,"GuiObject")then
-local u,v=e:ReadProperty(o,"Visible",false)
-if u and v==false then q=true end
-local w,x=e:ReadProperty(o,"ClipsDescendants",false)
-if o~=f and w and x==true and#n<4 then
-local y=e:Describe(o)
-local z={Handle=y.Handle,Name=y.Name}
-for A,B in{"AbsolutePosition","AbsoluteSize"}do
-local C,D=e:ReadProperty(o,B,false)
-if C then z[B]=e:_encode(D)end
+local x,y,z=pcall(function()
+return o:IsA"GuiObject",o:IsA"LayerCollector"
+end)
+if not x then
+visibilityError("IsA",y,true)
+elseif y then
+local A,B,C=e:ReadProperty(o,"Visible",false)
+if A and B==false then q=true end
+if not A then visibilityError("Visible",C,true)end
+local D,E,F=e:ReadProperty(o,"ClipsDescendants",false)
+if not D then visibilityError("ClipsDescendants",F,false)end
+if o~=f and D and E==true and#n<4 then
+local G=e:Describe(o)
+local H={Handle=G.Handle,Name=G.Name}
+for I,J in{"AbsolutePosition","AbsoluteSize"}do
+local K,L=e:ReadProperty(o,J,false)
+if K then H[J]=e:_encode(L)end
 end
-if e:_take(i,z)then table.insert(n,z)end
+if e:_take(i,H)then table.insert(n,H)end
 end
-elseif e:_isA(o,"LayerCollector")then
-local u,v=e:ReadProperty(o,"Enabled",false)
-if u and v==false then q=true end
+elseif z then
+local A,B,C=e:ReadProperty(o,"Enabled",false)
+if A and B==false then q=true end
+if not A then visibilityError("Enabled",C,true)end
 end
 end
-local u,v=e:ReadProperty(o,"Parent",false)
-if not u then break end
-if v==nil then r=true break end
-if e.Typeof(v)~="Instance"then break end
+local x,y,z=e:ReadProperty(o,"Parent",false)
+if not x then
+if j then visibilityError("Parent",z,true)end
+break
+end
+if y==nil then r=true break end
+if e.Typeof(y)~="Instance"then break end
 s+=1
 if k and#m<l then
-local w=e:Describe(v)
-w.FullName=nil
-if e:_take(i,w)then table.insert(m,w)end
+local A=e:Describe(y)
+A.FullName=nil
+if e:_take(i,A)then table.insert(m,A)end
 end
-o=v
+o=y
 if not j and s>=l then break end
 end
 if k then
@@ -6128,11 +6403,16 @@ h.AncestorsLimited=not r or s>#m
 end
 if j then
 h.Visibility={
-EffectiveVisible=if q then false elseif r then true else nil,
+EffectiveVisible=if q then false elseif r and not v then true else nil,
 AncestorsChecked=p,
-Limited=not r,
+Limited=not r or u>0,
 Basis="Local Visible/Enabled ancestry only; not occlusion, transparency, viewport intersection, or screenshot visibility.",
 }
+if u>0 then
+h.Visibility.ReadErrorCount=u
+h.Visibility.Errors=t
+h.Visibility.ErrorsOmitted=u-#t
+end
 if#n>0 then h.Visibility.ClippingAncestors=n end
 end
 end
@@ -6187,12 +6467,14 @@ for s=p+1,math.min(#o,p+q)do
 local t,u=pcall(function()return e:Describe(o[s])end)
 if t then
 u.FullName=nil
-if not e:_take(j,u)then break end
-table.insert(r,u)
 else
 j.limited=true
-break
+
+
+u={ChildIndex=s,Error=Short(u,240)}
 end
+if not e:_take(j,u)then break end
+table.insert(r,u)
 end
 m.ChildCount=#o
 m.ChildOffset=p
@@ -6248,7 +6530,7 @@ scope="Client-visible replicated/local instances only.",
 }
 end
 
-return b end function a.D():typeof(__modImpl())local b=a.cache.D if not b then b={c=__modImpl()}a.cache.D=b end return b.c end end do local function __modImpl()
+return b end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
 
 
 
@@ -6259,6 +6541,19 @@ local function Integer(c,d,e,f)
 local g=tonumber(c)
 if g==nil or g~=g then g=d end
 return math.clamp(math.floor(g),e,f)
+end
+
+local function Short(c,d)
+local e,f=pcall(tostring,c)
+if not e then return"unavailable"end
+if#f<=d then return f end
+local g=d-3
+while g>0 do
+local h=string.byte(f,g+1)
+if h==nil or h<128 or h>=192 then break end
+g-=1
+end
+return string.sub(f,1,g).."..."
 end
 
 local function Equal(c,d)
@@ -6414,7 +6709,7 @@ local g={}
 for h,i in ipairs(e.options.properties or{})do
 if h>20 then break end
 local j,k=c.inspector:ReadProperty(d,i,false)
-if j and k==e.referenced then table.insert(g,i)end
+if j and c.inspector:IsSameInstance(k,e.referenced)then table.insert(g,i)end
 end
 if#g==0 then return nil end
 local h=c.inspector:Describe(d)
@@ -6425,8 +6720,19 @@ end
 if not c:_matches(d,e)then return nil end
 local g=c.inspector:QueryRecord(d,e.options)
 g.Depth=f
-local h=d.Parent
-if h then g.ParentHandle=c.inspector:Describe(h).Handle end
+
+
+local h,i,j=c.inspector:ReadProperty(d,"Parent",false)
+if not h then
+g.ParentError=Short(j,240)
+elseif i~=nil then
+local k,l=pcall(function()return c.inspector:Describe(i)end)
+if k and type(l)=="table"and l.Handle~=nil then
+g.ParentHandle=l.Handle
+else
+g.ParentError=Short(if k then"Parent handle unavailable."else l,240)
+end
+end
 return g
 end
 
@@ -6455,7 +6761,7 @@ if d.seen[f]then return nil end
 d.seen[f]=true
 
 local g,h=pcall(function()return f:GetChildren()end)
-if g then
+if g and type(h)=="table"then
 if#h>0 then
 if e.depth>=d.maxDepth then
 d.depthLimited=true
@@ -6476,7 +6782,7 @@ if not j then return nil end
 d.matched+=1
 local k=j.ClassName or"Unknown"
 d.counts[k]=(d.counts[k]or 0)+1
-if j.PropertyErrorCount or j.AttributeError or j.TagError or j.PropertiesOmitted
+if j.PropertyErrorCount or j.AttributeError or j.TagError or j.ParentError or j.PropertiesOmitted
 or j.AttributesLimited or j.TagsLimited or j.Truncated then
 d.projectionErrors+=1
 end
@@ -6495,38 +6801,46 @@ end
 
 function b.Query(c,d,e)
 e=e or"query"
-local f
+local f=Integer(d.maxChars,20000,2000,60000)
+local g
 if d.cursor then
-local g,h=string.match(d.cursor,"^(.-):(%d+)$")
-assert(g,"Invalid Dex continuation cursor.")
-f=c:_get(g)
-assert(f.mode==e,"This cursor belongs to another Dex tool.")
-h=tonumber(h)
-if f.lastInput==h then return f.lastResponse end
-assert(h==f.revision and not f.done,"Stale or completed Dex cursor. Use nextCursor from the last response.")
-else
-f=c:_start(d,e)
+local h,i=string.match(d.cursor,"^(.-):(%d+)$")
+assert(h,"Invalid Dex continuation cursor.")
+g=c:_get(h)
+assert(g.mode==e,"This cursor belongs to another Dex tool.")
+i=tonumber(i)
+if g.lastInput==i then
+local j=g.lastResponse
+if c.measure(j)<=f-350 then return j end
+
+
+local k=table.clone(j)
+k.results=table.clone(j.results)
+return c:_fitEnvelope(k,"results",f)
 end
-f.expiresAt=c.clock()+c.ttl
-local g=f.revision
-local h=Integer(d.limit,25,1,100)
-local i=Integer(d.scanBudget,1000,1,10000)
-local j=Integer(d.maxChars,20000,2000,60000)
+assert(i==g.revision and not g.done,"Stale or completed Dex cursor. Use nextCursor from the last response.")
+else
+g=c:_start(d,e)
+end
+g.expiresAt=c.clock()+c.ttl
+local h=g.revision
+local i=Integer(d.limit,25,1,100)
+local j=Integer(d.scanBudget,1000,1,10000)
 local k=c.clock()+Integer(d.timeBudgetMs,8,1,50)/1000
 local l,m,n,o={},1000,100,0
-local p=f.visited
+local p=g.visited
 repeat
-local q=f.pending
-f.pending=nil
-if not q then q=c:_visit(f)end
+local q=g.pending
+g.pending=nil
+if not q then q=c:_visit(g)end
 if q then
 
 local r=c.measure(q)
 local s,t=EntryCount(q,2)
-if t or r+m>j or s+n>850 then
-if#l>0 then f.pending=q break end
+if t or r+m>f or s+n>850 then
+if#l>0 then g.pending=q break end
 q={
-Handle=q.Handle,Name=string.sub(q.Name or"",1,100),
+Handle=q.Handle,Name=Short(q.Name or"",100),
 ClassName=q.ClassName,omitted=true,
 reason=t or"page-budget",
 note="Record details omitted; use dex-inspect with fewer fields.",
@@ -6538,38 +6852,38 @@ table.insert(l,q)
 m+=r
 n+=s
 end
-c:_prune(f)
-until#l>=h or#f.stack==0 or f.visited-p>=i or c.clock()>=k
-c:_prune(f)
-f.done=#f.stack==0 and f.pending==nil
-if f.done then
-f.finishedAt=c.clock()
-table.clear(f.seen)
-f.referenced=nil
+c:_prune(g)
+until#l>=i or#g.stack==0 or g.visited-p>=j or c.clock()>=k
+c:_prune(g)
+g.done=#g.stack==0 and g.pending==nil
+if g.done then
+g.finishedAt=c.clock()
+table.clear(g.seen)
+g.referenced=nil
 end
-f.revision+=1
+g.revision+=1
 local q={}
-for r in pairs(f.reasons)do table.insert(q,r)end
+for r in pairs(g.reasons)do table.insert(q,r)end
 table.sort(q)
 local r={
-scanId=f.id,snapshotId=f.retain and f.id or nil,
+scanId=g.id,snapshotId=g.retain and g.id or nil,
 results=l,returned=#l,
-visitedThisPage=f.visited-p,visited=f.visited,matched=f.matched,
-done=f.done,complete=f.done and not f.limited and f.readErrors==0,
-nextCursor=not f.done and(f.id..":"..f.revision)or nil,
-limited=f.limited,limitReasons=q,depthLimited=f.depthLimited,
-readErrors=f.readErrors,projectionErrors=f.projectionErrors,
-projectionComplete=f.projectionErrors==0,
-retainedRecords=#f.records,capturedAt=f.createdAt,expiresInSeconds=c.ttl,
+visitedThisPage=g.visited-p,visited=g.visited,matched=g.matched,
+done=g.done,complete=g.done and not g.limited and g.readErrors==0,
+nextCursor=not g.done and(g.id..":"..g.revision)or nil,
+limited=g.limited,limitReasons=q,depthLimited=g.depthLimited,
+readErrors=g.readErrors,projectionErrors=g.projectionErrors,
+projectionComplete=g.projectionErrors==0,
+retainedRecords=#g.records,capturedAt=g.createdAt,expiresInSeconds=c.ttl,
 detailsComplete=o==0,detailsOmitted=o,
 replayRetention="Completed non-retained scans may be evicted when new scans need capacity.",
 scope="client-visible, non-atomic; streamed-out and server-only descendants are not observable",
 enumerationNote="Per-page budgets include non-matches. GetChildren is an atomic engine allocation; very wide parents can exceed a time slice.",
 }
 if e=="references"then r.coverage="Only supplied readable Instance-valued properties; not arbitrary Lua/GC references."end
-r=c:_fitEnvelope(r,"results",j)
-f.complete=r.complete
-f.lastInput,f.lastResponse=g,r
+r=c:_fitEnvelope(r,"results",f)
+g.complete=r.complete
+g.lastInput,g.lastResponse=h,r
 return r
 end
 
@@ -6692,7 +7006,7 @@ note="Differences cover captured projections only. Removed means no longer obser
 },"changes",g)
 end
 
-return b end function a.E():typeof(__modImpl())local b=a.cache.E if not b then b={c=__modImpl()}a.cache.E=b end return b.c end end do local function __modImpl()
+return b end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
 
 local b={}
 b.__index=b
@@ -6793,6 +7107,7 @@ Inspector=f.Inspector,
 Clock=g,
 registryId=h,
 Measure=f.Measure,
+EventSink=f.EventSink,
 maxWatchers=Integer(f.MaxWatchers,8,1,8),
 watchers={},
 finished={},
@@ -6851,6 +7166,7 @@ end
 function b._finish(f,g,h)
 if not g.active then return end
 g.active=false
+if f.EventSink then pcall(f.EventSink,"dex-watch-finished",{watcherId=g.id,reason=h,droppedEvents=g.droppedEvents,latestCursor=g.latestCursor})end
 for i,j in ipairs(g.connections)do
 pcall(function()j:Disconnect()end)
 end
@@ -6892,6 +7208,7 @@ end
 g.latestCursor+=1
 h.cursor=g.latestCursor
 h.observedAt=f.Clock()
+if f.EventSink then pcall(f.EventSink,"dex-watch-event",{watcherId=g.id,event=h})end
 local i
 if g.count<g.capacity then
 i=((g.head+g.count-1)%g.capacity)+1
@@ -7133,12 +7450,12 @@ f.destroyed=true
 for g,h in pairs(f.watchers)do f:_finish(h,"destroyed")end
 end
 
-return b end function a.F():typeof(__modImpl())local b=a.cache.F if not b then b={c=__modImpl()}a.cache.F=b end return b.c end end do local function __modImpl()
+return b end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
-local c=a.D()
-local d=a.E()
-local e=a.F()
+local c=a.E()
+local d=a.F()
+local e=a.G()
 
 return function(f,g)
 local h=game:GetService"HttpService"
@@ -7154,12 +7471,21 @@ NewId=function()return h:GenerateGUID(false)end,
 local k=e.new{
 Inspector=i,Values=f.RuntimeValues,Measure=measure,
 NewId=function()return h:GenerateGUID(false)end,
+EventSink=function(k,l)if f.ObservationSink then f.ObservationSink(k,l)end end,
 }
+f.DexInspector=i
 local l=true
 local m={
 Version=1,ClientId=g.ClientId,
+GetStatus=function()
+return{
+Connected=l and g.Connected==true and g.Ready==true,
+ClientId=g.ClientId,ConnectorId=f.RuntimeHandles.registryId,
+ConnectorGeneration=f.RuntimeHandles.generation,
+}
+end,
 Describe=function(m)
-assert(l,"Dex connection closed; reload the MCP connector.")
+assert(l and g.Connected,"Dex connection closed; reload the MCP connector.")
 return i:Describe(m)
 end,
 }
@@ -7167,10 +7493,11 @@ getgenv().RobloxMCPDex=m
 
 local function bind(n,o)
 g:BindToTypeStructured(n,function(p)
-assert(l,"Dex connection closed; reconnect and start a fresh query.")
+assert(l and g.Connected,"Dex connection closed; reconnect and start a fresh query.")
 local q=o(p)
 q.clientId=g.ClientId
 q.connectorGeneration=f.RuntimeHandles.generation
+q.connectorId=f.RuntimeHandles.registryId
 q.placeId=game.PlaceId
 q.observedAtUnixMs=DateTime.now().UnixTimestampMillis
 return q
@@ -7243,9 +7570,10 @@ return function()
 l=false
 k:Destroy()
 j:Destroy()
+if f.DexInspector==i then f.DexInspector=nil end
 if getgenv().RobloxMCPDex==m then getgenv().RobloxMCPDex=nil end
 end
-end end function a.G():typeof(__modImpl())local b=a.cache.G if not b then b={c=__modImpl()}a.cache.G=b end return b.c end end do local function __modImpl()
+end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.ScriptMappingPipeline
@@ -7364,7 +7692,7 @@ end)
 c:BindToTypeStructured("script-index-resync",function(j)
 return StartFresh"resync_started"
 end)
-end end function a.H():typeof(__modImpl())local b=a.cache.H if not b then b={c=__modImpl()}a.cache.H=b end return b.c end end do local function __modImpl()
+end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=500
@@ -7642,13 +7970,13 @@ e=false
 if not h then error(i)end
 return i
 end)
-end end function a.I():typeof(__modImpl())local b=a.cache.I if not b then b={c=__modImpl()}a.cache.I=b end return b.c end end do local function __modImpl()
+end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 c:BindToTypeStructured("executor-capabilities",function(d)
 return b.RuntimeCapabilities:Probe()
 end)
-end end function a.J():typeof(__modImpl())local b=a.cache.J if not b then b={c=__modImpl()}a.cache.J=b end return b.c end end do local function __modImpl()
+end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -7927,7 +8255,7 @@ local h=e:List(g.cursor,g.limit,g.kind)
 h.registry=e:Stats()
 return h
 end)
-end end function a.K():typeof(__modImpl())local b=a.cache.K if not b then b={c=__modImpl()}a.cache.K=b end return b.c end end do local function __modImpl()
+end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -8071,7 +8399,7 @@ nextCursor=(s or t<q)and t or nil,
 results=p,
 }
 end)
-end end function a.L():typeof(__modImpl())local b=a.cache.L if not b then b={c=__modImpl()}a.cache.L=b end return b.c end end do local function __modImpl()
+end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -8270,7 +8598,7 @@ truncated=#k>#l,
 end
 error("Unknown runtime-actors operation: "..tostring(h))
 end)
-end end function a.M():typeof(__modImpl())local b=a.cache.M if not b then b={c=__modImpl()}a.cache.M=b end return b.c end end do local function __modImpl()
+end end function a.N():typeof(__modImpl())local b=a.cache.N if not b then b={c=__modImpl()}a.cache.N=b end return b.c end end do local function __modImpl()
 
 return function(b,c)
 local d=b.GcExplorer
@@ -8298,7 +8626,7 @@ end)
 c:BindToTypeStructured("runtime-references",function(e)
 return d:References(e)
 end)
-end end function a.N():typeof(__modImpl())local b=a.cache.N if not b then b={c=__modImpl()}a.cache.N=b end return b.c end end do local function __modImpl()
+end end function a.O():typeof(__modImpl())local b=a.cache.O if not b then b={c=__modImpl()}a.cache.O=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
 
@@ -8414,28 +8742,266 @@ p.operation=h
 p.completed=true
 return p
 end)
-end end function a.O():typeof(__modImpl())local b=a.cache.O if not b then b={c=__modImpl()}a.cache.O=b end return b.c end end do local function __modImpl()
+end end function a.P():typeof(__modImpl())local b=a.cache.P if not b then b={c=__modImpl()}a.cache.P=b end return b.c end end do local function __modImpl()
+
+
+local b={}
+b.__index=b
+
+function b.new(c)
+return setmetatable({options=c,held={},heldProviders={},requested=nil,backend=nil},b)
+end
+
+local function desktopProvider(c)
+return c~=nil and c~="roblox-virtual-input"and c~="virtual-input-manager"and c~="text-property"and c~="gui-signal"
+end
+
+function b.UsesDesktopInput(c)
+if desktopProvider(c.backend)then return true end
+for d,e in pairs(c.heldProviders)do if desktopProvider(e)then return true end end
+return false
+end
+
+function b._requireDesktopInput(c)
+assert(c.options.ExecutorInputAllowed and c.options.ExecutorInputAllowed(),
+"Client-local input is unavailable for this action; desktop input is disabled while Roblox is in the background. No OS input was sent.")
+end
+
+function b._use(c,d,e,f)
+local g,h=pcall(f)
+if c.options.Record then c.options.Record(d,e,g)end
+if g then c.backend=e end
+return g,h
+end
+
+function b.Position(c)
+local d,e=pcall(function()return c.options.UserInputService:GetMouseLocation()end)
+return if d then{x=e.X,y=e.Y}else nil
+end
+
+function b.State(c)
+local d={}
+for e in pairs(c.held)do table.insert(d,e)end
+table.sort(d)
+return{requested=c.requested,observed=c:Position(),backend=c.backend,held=d,
+focusRequired=false,backgroundPolicy="client-local-only",effectVerification="required"}
+end
+
+function b.Move(c,d,e,f)
+assert(not c.closed,"Input controller closed.")
+assert(type(d)=="number"and d==d and math.abs(d)<100000,"Invalid mouse x.")
+assert(type(e)=="number"and e==e and math.abs(e)<100000,"Invalid mouse y.")
+local g,h=c.options,false
+c.requested={x=d,y=e,relative=f==true}
+if g.VirtualInput then
+h=c:_use("input.mouse","roblox-virtual-input",function()
+if f then g.VirtualInput:SendMouseDelta(Vector2.new(d,e))
+else g.VirtualInput:SendMousePosition(Vector2.new(d,e))end
+end)
+end
+if not h and not f then
+h=c:_use("input.mouse","virtual-input-manager",function()g.VirtualInputManager:SendMouseMoveEvent(d,e,g.Game)end)
+end
+if not h then
+c:_requireDesktopInput()
+local i=if f then g.Environment.mousemoverel else g.Environment.mousemoveabs
+assert(type(i)=="function","Requested mouse movement is unavailable.")
+local j
+h,j=c:_use("input.mouse",if f then"mousemoverel"else"mousemoveabs",function()i(d,e)end)
+assert(h,"Mouse movement dispatch failed.")
+end
+return c:State()
+end
+
+function b.Button(c,d,e,f,g)
+assert(not c.closed or not e,"Input controller closed.")
+local h="mouse:"..d
+if not e and c.held[h]then
+local i=c.held[h]
+i(f,g)
+c.held[h]=nil
+c.heldProviders[h]=nil
+return c:State()
+end
+assert(not e or not c.held[h],"This mouse button is already held by MCP.")
+local i=({left=0,right=1,middle=2})[d]
+assert(i~=nil,"Unsupported button.")
+local j,k=c.options
+local function try(l,m)
+local n=c:_use("input.mouse",l,function()m(e,f,g)end)
+if n then k=function(o,p)
+local q=c:Position()
+local r=c:_use("input.mouse",l,function()m(false,o or(q and q.x)or f,p or(q and q.y)or g)end)
+assert(r,"Mouse release failed.")
+end end
+return n
+end
+local l=false
+if j.VirtualInput then
+l=try("roblox-virtual-input",function(m,n,o)
+j.VirtualInput:SendMouseButton(Vector2.new(n,o),j.Enum.UserInputType[({left="MouseButton1",right="MouseButton2",middle="MouseButton3"})[d] ],m,0)
+end)
+end
+if not l then l=try("virtual-input-manager",function(m,n,o)j.VirtualInputManager:SendMouseButtonEvent(n,o,i,m,j.Game,0)end)end
+if not l then
+c:_requireDesktopInput()
+local m=({left="mouse1",right="mouse2"})[d]
+local n=m and j.Environment[m.."press"]
+local o=m and j.Environment[m.."release"]
+assert(type(n)=="function"and type(o)=="function","Mouse button fallback is unavailable.")
+
+c:Move(f,g)
+l=try(m,function(p)if p then n()else o()end end)
+end
+assert(l,"Mouse button dispatch failed; outcome unknown.")
+if e then c.held[h]=k c.heldProviders[h]=c.backend end
+return c:State()
+end
+
+function b.Key(c,d,e,f)
+assert(not c.closed or not f,"Input controller closed.")
+local g,h="key:"..d.Name,c.options
+if not f and c.held[g]then c.held[g]()c.held[g]=nil c.heldProviders[g]=nil return c:State()end
+assert(not f or not c.held[g],"This key is already held by MCP.")
+local i={}
+if h.VirtualInput then table.insert(i,{"roblox-virtual-input",function(j)h.VirtualInput:SendKey(j,d,false)end})end
+table.insert(i,{"virtual-input-manager",function(j)h.VirtualInputManager:SendKeyEvent(j,d,false,h.Game)end})
+table.insert(i,{"executor-key",function(j)
+if j then c:_requireDesktopInput()end
+assert(type(e)=="number","No executor key mapping is available.")
+assert(type(h.Environment.keypress)=="function"and type(h.Environment.keyrelease)=="function","Paired key APIs unavailable.")
+local k=if j then h.Environment.keypress else h.Environment.keyrelease
+assert(type(k)=="function","Key API unavailable.")
+k(e)
+end})
+for j,k in ipairs(i)do
+local l=c:_use("input.key",k[1],function()k[2](f)end)
+if l then
+if f then c.held[g]=function()
+assert(c:_use("input.key",k[1],function()k[2](false)end),"Key release failed.")
+end c.heldProviders[g]=k[1]end
+return c:State()
+end
+end
+error"Key dispatch failed; outcome unknown."
+end
+
+function b.Text(c,d,e,f)
+assert(not c.closed,"Input controller closed.")
+assert(utf8.len(d)~=nil,"Text must be valid UTF-8.")
+local g=c.options
+if g.VirtualInput and c:_use("input.text","roblox-virtual-input",function()g.VirtualInput:SendTextInput(d)end)then return"simulated-typing"end
+if c:_use("input.text","virtual-input-manager",function()g.VirtualInputManager:SendTextInput(d,nil,g.Game)end)then return"simulated-typing"end
+assert(e and f,"Text input unavailable; explicit TextBox assignment fallback was not enabled.")
+e.Text=d
+c.backend="text-property"
+return"property-assignment"
+end
+
+function b.Scroll(c,d,e,f,g)
+assert(not c.closed,"Input controller closed.")
+local h=c.options
+for i=1,f do
+if not c:_use("input.scroll","virtual-input-manager",function()h.VirtualInputManager:SendMouseWheelEvent(d,e,g,h.Game)end)then
+c:_requireDesktopInput()
+assert(type(h.Environment.mousescroll)=="function","Scroll API unavailable.")
+c:Move(d,e)
+assert(c:_use("input.scroll","mousescroll",function()h.Environment.mousescroll(if g then 1 else-1)end),"Scroll dispatch failed.")
+end
+end
+return c:State()
+end
+
+function b.Activate(c,d,e)
+assert(not c.closed,"Input controller closed.")
+assert(d:IsA"GuiButton"and d.Interactable~=false and d.Active,"Target button is not interactable.")
+assert(e=="Activated"or e=="MouseButton1Click"or e=="MouseButton2Click","Unsupported GUI activation signal.")
+local f=c.options.Environment.firesignal
+assert(type(f)=="function","Direct GUI activation is unavailable on this executor; no pointer fallback was attempted.")
+local g=c:_use("input.fire-signal","gui-signal",function()
+if e=="Activated"then f(d.Activated,nil,1)else f(d[e])end
+end)
+assert(g,"GUI signal dispatch failed; outcome unknown. Do not blindly retry.")
+return"signal-dispatch"
+end
+
+function b.SetText(c,d,e)
+assert(not c.closed,"Input controller closed.")
+assert(d:IsA"TextBox"and d.TextEditable~=false,"Target must be an editable TextBox.")
+local f=utf8.len(e)
+assert(f and f<=2000 and#e<=8000,"Text requires up to 2000 UTF-8 characters.")
+d.Text=e
+c.backend="text-property"
+return"property-assignment"
+end
+
+function b.ReleaseAll(c,d)
+local e={}
+for f,g in pairs(c.held)do
+if not d or desktopProvider(c.heldProviders[f])then
+if pcall(g)then c.held[f]=nil c.heldProviders[f]=nil else table.insert(e,f)end
+end
+end
+return e
+end
+
+return b end function a.Q():typeof(__modImpl())local b=a.cache.Q if not b then b={c=__modImpl()}a.cache.Q=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
+local c=a.Q()
 
-return function(c,d)
-local e=c.VirtualInputManager
-local f=c.Players
-local g=game:GetService"UserInputService"
-
-local function MousePosition(h)
-if h.x~=nil or h.y~=nil then
-assert(type(h.x)=="number"and type(h.y)=="number","Provide both x and y, or omit both.")
-return math.floor(h.x),math.floor(h.y)
+return function(d,e)
+local f=d.VirtualInputManager
+local g=d.Players
+local h=game:GetService"UserInputService"
+local i
+local j
+local function isFocused()
+if type(isrbxactive)=="function"then
+local k,l=pcall(isrbxactive)
+if k and type(l)=="boolean"then return l end
 end
-local i=g:GetMouseLocation()
-return math.floor(i.X),math.floor(i.Y)
+return j
+end
+d.IsInputFocused=isFocused
+
+pcall(function()i=h:CreateVirtualInput()end)
+local k=c.new{
+VirtualInputManager=f,VirtualInput=i,
+UserInputService=h,Game=game,Enum=Enum,
+ExecutorInputAllowed=function()return isFocused()==true end,
+Environment={mousemoveabs=mousemoveabs,mousemoverel=mousemoverel,
+mouse1press=mouse1press,mouse1release=mouse1release,
+mouse2press=mouse2press,mouse2release=mouse2release,
+keypress=keypress,keyrelease=keyrelease,mousescroll=mousescroll,firesignal=firesignal},
+Record=function(k,l,m)
+if d.RuntimeCapabilities.RecordUse then d.RuntimeCapabilities:RecordUse(k,l,m)end
+end,
+}
+d.InputController=k
+local l=h.WindowFocusReleased:Connect(function()j=false k:ReleaseAll(true)end)
+local m=h.WindowFocused:Connect(function()j=true end)
+local function result(n)
+n.dispatch="accepted"
+n.backend=k.backend
+n.cursor=k:State()
+n.expectedEffectObserved=nil
+return n
 end
 
-local function KeyCodeForExecutor(h)
-local i=h.Name
-if#i==1 then return string.byte(string.upper(i))end
-local j={
+local function MousePosition(n)
+if n.x~=nil or n.y~=nil then
+assert(type(n.x)=="number"and type(n.y)=="number","Provide both x and y, or omit both.")
+return math.floor(n.x),math.floor(n.y)
+end
+local o=h:GetMouseLocation()
+return math.floor(o.X),math.floor(o.Y)
+end
+
+local function KeyCodeForExecutor(n)
+local o=n.Name
+if#o==1 then return string.byte(string.upper(o))end
+local p={
 Backspace=0x08,
 Tab=0x09,
 Return=0x0D,
@@ -8458,217 +9024,174 @@ Down=0x28,
 Insert=0x2D,
 Delete=0x2E,
 }
-if j[i]then return j[i]end
-local k=string.match(i,"^F(%d+)$")
-if k then
-local l=tonumber(k)
-if l and l>=1 and l<=12 then return 0x6F+l end
+if p[o]then return p[o]end
+local q=string.match(o,"^F(%d+)$")
+if q then
+local r=tonumber(q)
+if r and r>=1 and r<=12 then return 0x6F+r end
 end
-return h.Value
-end
-
-local function SendKey(h)
-local i=Enum.KeyCode[h.key]
-assert(i~=nil,"Unknown Enum.KeyCode: "..tostring(h.key))
-local j=h.state or"press"
-local k=math.max(1,math.min(math.floor(tonumber(h.repeatCount)or 1),20))
-local l=math.max(0,math.min((tonumber(h.durationMs)or 40)/1000,2))
-l=math.min(l,10/k)
-local m=false
-
-local function Send(n)
-local o=pcall(function()
-e:SendKeyEvent(n,i,false,game)
-end)
-if o then return end
-
-m=true
-local p=KeyCodeForExecutor(i)
-if n then
-assert(type(keypress)=="function","VirtualInputManager and keypress both failed/unavailable.")
-keypress(p)
-else
-assert(type(keyrelease)=="function","VirtualInputManager and keyrelease both failed/unavailable.")
-keyrelease(p)
-end
+error("No verified executor virtual-key mapping for "..o)
 end
 
-for n=1,k do
-if j=="down"then
+local function SendKey(n)
+local o=Enum.KeyCode[n.key]
+assert(o~=nil,"Unknown Enum.KeyCode: "..tostring(n.key))
+local p=n.state or"press"
+local q=math.max(1,math.min(math.floor(tonumber(n.repeatCount)or 1),20))
+local r=math.max(0,math.min((tonumber(n.durationMs)or 40)/1000,2))
+r=math.min(r,10/q)
+local s,t=pcall(KeyCodeForExecutor,o)
+local function Send(u)k:Key(o,if s then t else nil,u)end
+
+for u=1,q do
+if p=="down"then
 Send(true)
-elseif j=="up"then
+elseif p=="up"then
 Send(false)
 else
 Send(true)
-if l>0 then task.wait(l)end
+if r>0 then task.wait(r)end
 Send(false)
 end
 end
-return{status="sent",action="key",key=i.Name,state=j,fallbackUsed=m}
+return result{status="sent",action="key",key=o.Name,state=p}
 end
 
-local function SendText(h)
-local i=tostring(h.text or"")
-assert(#i<=2000,"Text input is limited to 2000 characters.")
-local j
-if h.target then
-j=b.Resolve(h.target)
-assert(j:IsA"TextBox","Text target must resolve to a TextBox.")
-j:CaptureFocus()
+local function SendText(n)
+local o=tostring(n.text or"")
+assert(utf8.len(o)and utf8.len(o)<=2000 and#o<=8000,"Text input requires up to 2000 UTF-8 characters.")
+local p
+if n.target then
+p=b.Resolve(n.target)
+assert(p:IsA"TextBox","Text target must resolve to a TextBox.")
+p:CaptureFocus()
 task.wait()
 end
 
-local k=false
-local l=pcall(function()
-for l=1,#i do
-e:SendTextInput(string.sub(i,l,l),nil,game)
-if l%100==0 then task.wait()end
+assert(not p or h:GetFocusedTextBox()==p,"Text focus changed before dispatch.")
+local q=k:Text(o,p,n.allowPropertyFallback==true)
+
+if n.submit==true then
+if not p then SendKey{key="Return"}end
 end
-end)
-if not l then
-assert(j,"VirtualInputManager text input failed and no TextBox fallback target was supplied.")
-j.Text=i
-k=true
+if p then p:ReleaseFocus(n.submit==true)end
+return result{status="sent",action="text",characters=utf8.len(o),bytes=#o,
+submitted=n.submit==true,method=q,fallbackUsed=q=="property-assignment"}
 end
 
-if h.submit==true then
-pcall(function()
-e:SendKeyEvent(true,Enum.KeyCode.Return,false,game)
-e:SendKeyEvent(false,Enum.KeyCode.Return,false,game)
-end)
-end
-if j then j:ReleaseFocus(h.submit==true)end
-return{status="sent",action="text",characters=#i,submitted=h.submit==true,fallbackUsed=k}
-end
-
-local function SendMouse(h)
-local i,j=MousePosition(h)
-local k=h.event
-local l=h.button or"left"
-local m=({left=0,right=1,middle=2})[l]
-assert(m~=nil,"Unsupported mouse button.")
-local n=false
-
-if k=="move"then
-local o=pcall(function()e:SendMouseMoveEvent(i,j,game)end)
-if not o then
-assert(type(mousemoveabs)=="function","Mouse movement is unsupported by this executor.")
-mousemoveabs(i,j)
-n=true
-end
+local function SendMouse(n)
+local o,p=MousePosition(n)
+local q=n.event
+local r=n.button or"left"
+local s=({left=0,right=1,middle=2})[r]
+assert(s~=nil,"Unsupported mouse button.")
+if q=="move"then
+k:Move(o,p,n.relative==true)
 else
-local function SendButton(o)
-local p=pcall(function()
-e:SendMouseButtonEvent(i,j,m,o,game,0)
-end)
-if p then return end
-n=true
-local q={
-left={down=mouse1press,up=mouse1release},
-right={down=mouse2press,up=mouse2release},
-}
-local r=q[l]
-local s=r and r[o and"down"or"up"]
-assert(type(s)=="function","Mouse button input is unsupported by this executor.")
-s()
+local function SendButton(t)
+k:Button(r,t,o,p)
 end
 
-if k=="down"then
+if q=="down"then
 SendButton(true)
-elseif k=="up"then
+elseif q=="up"then
 SendButton(false)
-elseif k=="click"then
+elseif q=="click"then
 SendButton(true)
 task.wait(0.04)
 SendButton(false)
 else
-error("Unsupported mouse event: "..tostring(k))
+error("Unsupported mouse event: "..tostring(q))
 end
 end
 
-return{status="sent",action="mouse",event=k,button=l,x=i,y=j,fallbackUsed=n}
+return result{status="sent",action="mouse",event=q,button=r,x=o,y=p}
 end
 
-local function SendScroll(h)
-local i,j=MousePosition(h)
-local k=math.max(1,math.min(math.floor(tonumber(h.clicks)or 1),50))
-local l=h.direction=="up"
-local m=false
-for n=1,k do
-local o=pcall(function()
-e:SendMouseWheelEvent(i,j,l,game)
-end)
-if not o then
-assert(type(mousescroll)=="function","Mouse wheel input is unsupported by this executor.")
-mousescroll(l and 1 or-1)
-m=true
-end
-end
-return{status="sent",action="scroll",direction=h.direction,clicks=k,fallbackUsed=m}
+local function SendScroll(n)
+local o,p=MousePosition(n)
+local q=math.max(1,math.min(math.floor(tonumber(n.clicks)or 1),50))
+local r=n.direction=="up"
+k:Scroll(o,p,q,r)
+return result{status="sent",action="scroll",direction=n.direction,clicks=q,x=o,y=p}
 end
 
-local function FirePrompt(h)
-local i=b.Resolve(h.target)
-assert(i:IsA"ProximityPrompt","Target must be a ProximityPrompt.")
-local j=math.max(0,math.min(tonumber(h.holdDuration)or i.HoldDuration,10))
+local function FirePrompt(n)
+local o=b.Resolve(n.target)
+assert(o:IsA"ProximityPrompt","Target must be a ProximityPrompt.")
+local p=math.max(0,math.min(tonumber(n.holdDuration)or o.HoldDuration,10))
 if type(fireproximityprompt)=="function"then
-fireproximityprompt(i,j)
-return{status="fired",action="proximity-prompt",target=b.Describe(i),fallbackUsed=false}
+fireproximityprompt(o,p)
+return{status="fired",action="proximity-prompt",target=b.Describe(o),fallbackUsed=false}
 end
 
-local k=pcall(function()i:InputHoldBegin()end)
-assert(k,"Executor does not support fireproximityprompt or ProximityPrompt input methods.")
-if j>0 then task.wait(j)end
-i:InputHoldEnd()
-return{status="fired",action="proximity-prompt",target=b.Describe(i),fallbackUsed=true}
+local q=pcall(function()o:InputHoldBegin()end)
+assert(q,"Executor does not support fireproximityprompt or ProximityPrompt input methods.")
+if p>0 then task.wait(p)end
+o:InputHoldEnd()
+return{status="fired",action="proximity-prompt",target=b.Describe(o),fallbackUsed=true}
 end
 
-local function FireDetector(h)
-local i=b.Resolve(h.target)
-assert(i:IsA"ClickDetector","Target must be a ClickDetector.")
-local j=math.max(0,math.min(tonumber(h.distance)or 0,10000))
+local function FireDetector(n)
+local o=b.Resolve(n.target)
+assert(o:IsA"ClickDetector","Target must be a ClickDetector.")
+local p=math.max(0,math.min(tonumber(n.distance)or 0,10000))
 if type(fireclickdetector)=="function"then
-fireclickdetector(i,j)
-return{status="fired",action="click-detector",target=b.Describe(i),fallbackUsed=false}
+fireclickdetector(o,p)
+return{status="fired",action="click-detector",target=b.Describe(o),fallbackUsed=false}
 end
 
 assert(type(firesignal)=="function","Executor supports neither fireclickdetector nor firesignal.")
-firesignal(i.MouseClick,f.LocalPlayer)
-return{status="fired",action="click-detector",target=b.Describe(i),fallbackUsed=true}
+firesignal(o.MouseClick,g.LocalPlayer)
+return{status="fired",action="click-detector",target=b.Describe(o),fallbackUsed=true}
 end
 
-local function FireTouch(h)
+local function FireTouch(n)
 assert(type(firetouchinterest)=="function","Executor does not support firetouchinterest.")
-local i=b.Resolve(h.first)
-local j=b.Resolve(h.second)
-assert(i:IsA"BasePart"and j:IsA"BasePart","Both touch targets must be BaseParts.")
-local k=h.state or"tap"
-if k=="begin"or k=="tap"then firetouchinterest(i,j,0)end
-if k=="tap"then task.wait()end
-if k=="end"or k=="tap"then firetouchinterest(i,j,1)end
+local o=b.Resolve(n.first)
+local p=b.Resolve(n.second)
+assert(o:IsA"BasePart"and p:IsA"BasePart","Both touch targets must be BaseParts.")
+local q=n.state or"tap"
+if q=="begin"or q=="tap"then firetouchinterest(o,p,0)end
+if q=="tap"then task.wait()end
+if q=="end"or q=="tap"then firetouchinterest(o,p,1)end
 return{
 status="fired",
 action="touch",
-state=k,
-first=b.Describe(i),
-second=b.Describe(j),
+state=q,
+first=b.Describe(o),
+second=b.Describe(p),
 }
 end
 
-d:BindToTypeStructured("input",function(h)
-if h.action=="key"then return SendKey(h)end
-if h.action=="text"then return SendText(h)end
-if h.action=="mouse"then return SendMouse(h)end
-if h.action=="scroll"then return SendScroll(h)end
-if h.action=="proximity-prompt"then return FirePrompt(h)end
-if h.action=="click-detector"then return FireDetector(h)end
-if h.action=="touch"then return FireTouch(h)end
-error("Unsupported input action: "..tostring(h.action))
-end)
-end end function a.P():typeof(__modImpl())local b=a.cache.P if not b then b={c=__modImpl()}a.cache.P=b end return b.c end end do local function __modImpl()
+local function dispatch(n)
+if n.action=="key"then return SendKey(n)end
+if n.action=="text"then return SendText(n)end
+if n.action=="mouse"then return SendMouse(n)end
+if n.action=="scroll"then return SendScroll(n)end
+if n.action=="proximity-prompt"then return FirePrompt(n)end
+if n.action=="click-detector"then return FireDetector(n)end
+if n.action=="touch"then return FireTouch(n)end
+error("Unsupported input action: "..tostring(n.action))
+end
+d.DispatchInput=function(n,o)
+assert(not d.InputOwner or d.InputOwner==o,"Another MCP action owns input; cancel it or wait.")
+local p,q=pcall(dispatch,n)
+if not p then k:ReleaseAll()error(q,0)end
+return q
+end
+e:BindToTypeStructured("input",function(n)return d.DispatchInput(n)end)
+return function()
+k.closed=true
+k:ReleaseAll()
+l:Disconnect()
+m:Disconnect()
+if d.InputController==k then d.InputController=nil d.DispatchInput=nil d.IsInputFocused=nil end
+end
+end end function a.R():typeof(__modImpl())local b=a.cache.R if not b then b={c=__modImpl()}a.cache.R=b end return b.c end end do local function __modImpl()
 
 local b=a.d()
-local c=a.x()
+local c=a.y()
 
 local d="__ROBLOX_MCP_EVENT_JOURNAL_V2"
 local e="__ROBLOX_MCP_EVENT_JOURNAL_V1"
@@ -9132,7 +9655,497 @@ return WaitForRemote(w)
 end
 error("Unsupported wait mode: "..tostring(w.mode))
 end)
-end end function a.Q():typeof(__modImpl())local b=a.cache.Q if not b then b={c=__modImpl()}a.cache.Q=b end return b.c end end do local function __modImpl()
+end end function a.S():typeof(__modImpl())local b=a.cache.S if not b then b={c=__modImpl()}a.cache.S=b end return b.c end end do local function __modImpl()
+
+
+local b={}
+b.__index=b
+local function Copy(c,d)
+if type(c)~="table"then return c end
+assert((d or 0)<12,"Event nesting exceeds journal limit.")
+local e={}
+for f,g in pairs(c)do e[f]=Copy(g,(d or 0)+1)end
+return e
+end
+function b.new(c,d,e)
+return setmetatable({capacity=c or 1000,maxBytes=e or 2000000,
+measure=d,entries={},first=1,last=0,bytes=0,dropped=0},b)
+end
+function b.Push(c,d,e,f)
+c.last+=1
+local g,h=pcall(Copy,e)
+local i={sequence=c.last,kind=d,atMonotonicMs=f,data=if g then h else{omitted=true}}
+local j=c.measure(i)
+if j>c.maxBytes then
+i.data={omitted=true,reason="event-byte-limit"}
+j=c.measure(i)
+end
+c.entries[c.last]={row=i,size=j}
+c.bytes+=j
+while c.last-c.first+1>c.capacity or c.bytes>c.maxBytes do
+c.bytes-=c.entries[c.first].size
+c.entries[c.first]=nil
+c.first+=1
+c.dropped+=1
+end
+return c.last
+end
+function b.Read(c,d,e)
+d,e=d or 0,e or 50
+local f={}
+local g=math.max(d+1,c.first)
+for h=g,math.min(c.last,g+e-1)do table.insert(f,Copy(c.entries[h].row))end
+return{events=f,nextCursor=if#f>0 then f[#f].sequence else math.max(d,c.first-1),
+latestCursor=c.last,dropped=c.dropped,gap=d<c.first-1,
+received=c.last,retained=c.last-c.first+1,bytes=c.bytes}
+end
+return b end function a.T():typeof(__modImpl())local b=a.cache.T if not b then b={c=__modImpl()}a.cache.T=b end return b.c end end do local function __modImpl()
+
+local b=a.T()
+local c={}
+c.__index=c
+local function now()return os.clock()*1000 end
+local function safe(d)local e,f=pcall(d)return if e then f else nil end
+local function xy(d)return{x=d.X,y=d.Y}end
+local function xyz(d)return{x=d.X,y=d.Y,z=d.Z}end
+local function short(d,e)
+if#d<=e then return d end
+local f,g=pcall(utf8.offset,d,0,e+1)
+return if f and g then string.sub(d,1,g-1)else string.sub(string.gsub(d,"[^%g ]","?"),1,e)
+end
+
+function c.new(d,e)
+local f=game:GetService"HttpService"
+local g=setmetatable({context=d,bridge=e,http=f,
+id=f:GenerateGUID(false),observations={},order={},actions={},actionOrder={},
+connections={},geometryRevision=0,geometrySignature="",closed=false,
+journal=b.new(1000,function(g)return#f:JSONEncode(g)end),
+instrumentedStates={},build={},activeAction=nil,focused=d.IsInputFocused(),
+controller=d.InputController,dispatchInput=d.DispatchInput},c)
+g.uis,g.gui=game:GetService"UserInputService",game:GetService"GuiService"
+g.playerGui=d.Players.LocalPlayer:FindFirstChildOfClass"PlayerGui"
+g.inspector=d.DexInspector
+local function connect(h,i)table.insert(g.connections,h:Connect(i))end
+connect(g.uis.InputBegan,function(h,i)
+g:Emit("input-began",{key=h.KeyCode.Name,inputType=h.UserInputType.Name,position=xy(h.Position),processed=i})
+end)
+connect(g.uis.InputEnded,function(h)g:Emit("input-ended",{key=h.KeyCode.Name,inputType=h.UserInputType.Name})end)
+connect(g.uis.WindowFocusReleased,function()
+g.focused=false
+if g.activeAction and g.actions[g.activeAction].desktopInput then g:Cancel(g.activeAction,"desktop-input-focus-lost")end
+end)
+connect(g.uis.WindowFocused,function()g.focused=true end)
+connect(d.LogService.MessageOut,function(h,i)
+g:Emit("console",{text=short(h,450),level=i.Name,source="LogService.MessageOut",observedAtUnixMs=DateTime.now().UnixTimestampMillis})
+end)
+local h=safe(function()return d.LogService:GetLogHistory()end)or{}
+for i=math.max(1,#h-199),#h do
+local j=h[i]
+g:Emit("console",{text=short(tostring(j.message or""),450),level=j.messageType and j.messageType.Name or"Unknown",
+source="LogService.GetLogHistory",timestamp=j.timestamp,historical=true})
+end
+d.ObservationSink=function(i,j)g:Emit(i,j)end
+return g
+end
+
+function c.ReadConsole(d,e)
+local f,g,h=e.cursor or 0,{},0
+local i=f<d.journal.first-1
+while f<d.journal.last and#g<(e.limit or 10)and h<500 do
+local j=d.journal:Read(f,1)
+f=j.nextCursor h+=1
+local k=j.events[1]
+if k and k.kind=="console"then
+local l=k.data
+if(not e.level or l.level==e.level)and(not e.contains or string.find(string.lower(l.text or""),string.lower(e.contains),1,true))then
+table.insert(g,{sequence=k.sequence,atMonotonicMs=k.atMonotonicMs,entry=l})
+end
+end
+end
+return{sessionId=d.id,clientId=d.bridge.ClientId,entries=g,nextCursor=f,
+latestCursor=d.journal.last,gap=i,dropped=d.journal.dropped,complete=f>=d.journal.last,
+coverage="Roblox client LogService only; executor-private console entries may not be exposed."}
+end
+
+function c.Emit(d,e,f)
+if d.closed then return end
+
+local g,h=pcall(function()return d.http:JSONEncode(f)end)
+d.journal:Push(string.sub(tostring(e),1,100),if g and#h<=16000 then d.http:JSONDecode(h)else{omitted=true,reason="non-JSON or oversized event"},now())
+end
+
+function c.Identity(d,e)
+if not e then return nil end
+return safe(function()return d.inspector:Describe(e)end)
+end
+
+function c.Geometry(d)
+local e=workspace.CurrentCamera
+local f=if e then xy(e.ViewportSize)else{x=0,y=0}
+local g=safe(function()local g,h=d.gui:GetGuiInset()return{topLeft=xy(g),bottomRight=xy(h)}end)
+local h=d.http:JSONEncode{f,g}
+if h~=d.geometrySignature then d.geometryRevision+=1 d.geometrySignature=h end
+return{viewport=f,guiInset=g,revision=d.geometryRevision,
+coordinateSpace="roblox-screen",focused=d.focused,
+mouseBehavior=tostring(d.uis.MouseBehavior),camera=d:Identity(e)}
+end
+
+function c.GuiRecord(d,e)
+local f=d:Identity(e)
+if not f then return nil end
+f.bounds=safe(function()return{position=xy(e.AbsolutePosition),size=xy(e.AbsoluteSize)}end)
+f.visible=safe(function()return e.Visible end)
+f.text=safe(function()return short(e.Text,450)end)
+f.textSource=if f.text then"gui-property"else nil
+f.active=safe(function()return e.Active end)
+f.interactable=safe(function()return e.Interactable end)
+f.backgroundTransparency=safe(function()return e.BackgroundTransparency end)
+f.interactive=e:IsA"GuiButton"or e:IsA"TextBox"
+f.zIndex=e.ZIndex
+f.canvasPosition=safe(function()return xy(e.CanvasPosition)end)
+local g,h,i=e,true,0
+while g and i<64 do
+if g:IsA"GuiObject"and not g.Visible then h=false end
+if g:IsA"LayerCollector"and not g.Enabled then h=false end
+g,i=g.Parent,i+1
+end
+f.effectiveVisible=if not h then false elseif g==nil then true else nil
+return f
+end
+
+function c.GuiQuery(d,e)
+local f=if e.target then d.inspector:Resolve(e.target)else d.playerGui
+assert(f,"PlayerGui is unavailable.")
+local g,h,i=math.clamp(e.limit or 20,1,50),0,{}
+local j={{nodes={f},index=1}}
+while#j>0 and h<(e.scanBudget or 500)and#i<g do
+local k=j[#j]
+local l=k.nodes[k.index]
+k.index+=1
+if not l then table.remove(j)continue end
+h+=1
+if l:IsA"GuiObject"then
+local m=safe(function()return d:GuiRecord(l)end)
+if m and(not e.interactiveOnly or m.interactive)and(not e.visibleOnly or m.effectiveVisible==true)
+and(not e.text or string.find(string.lower((m.text or"").." "..(m.Name or"")),string.lower(e.text),1,true))then
+table.insert(i,m)
+end
+end
+if#j<64 then
+local m=safe(function()return l:GetChildren()end)
+if m and#m>0 then table.insert(j,{nodes=m,index=1})end
+end
+end
+return{results=i,visited=h,complete=#j==0,
+continuation=if#j>0 then"Use dex-query for a resumable full inventory."else nil}
+end
+
+function c.HitTest(d,e,f)
+local g={}
+local h,i=pcall(function()return game:GetService"CoreGui":GetGuiObjectsAtPosition(e,f)end)
+local j=d.playerGui and d.playerGui:GetGuiObjectsAtPosition(e,f)or{}
+for k,l in ipairs{if h then i else{},j}do
+for m,n in ipairs(l)do
+if n~=d.requestedDot and n~=d.observedDot and#g<25 then table.insert(g,d:GuiRecord(n))end
+end
+end
+return{x=e,y=f,coordinateSpace="roblox-screen",hits=g,coreGuiChecked=h}
+end
+
+function c.Observe(d,e)
+assert(not d.closed and d.bridge.Connected,"Observation connection closed.")
+local f,g=now(),d:Geometry()
+local h={observationId="obs_"..d.http:GenerateGUID(false),sessionId=d.id,
+clientId=d.bridge.ClientId,connectorGeneration=d.context.RuntimeHandles.generation,
+placeId=game.PlaceId,jobId=game.JobId,
+registryId=d.context.RuntimeHandles.registryId,scope="client",geometryRevision=g.revision,
+geometry=g,collectionStartedAtMs=f,observedAtUnixMs=DateTime.now().UnixTimestampMillis,
+cursor=d.controller:State(),focusedTextBox=d:Identity(d.uis:GetFocusedTextBox()),
+selectedObject=d:Identity(d.gui.SelectedObject),warnings={"Collection is non-atomic and covers client-visible state."},
+profile=e.profile or"ui-debug",build=table.clone(d.build)}
+if h.profile=="ui-debug"then h.interface=d:GuiQuery{limit=e.limit or 10,visibleOnly=true}end
+local i=workspace.CurrentCamera
+if i then h.camera={position=xyz(i.CFrame.Position),look=xyz(i.CFrame.LookVector),fieldOfView=i.FieldOfView}end
+local j=d.context.Players.LocalPlayer.Character
+local k=j and j:FindFirstChildOfClass"Humanoid"
+local l=j and j:FindFirstChild"HumanoidRootPart"
+h.player={character=d:Identity(j),health=k and k.Health,
+state=k and tostring(k:GetState()),position=l and xyz(l.Position),velocity=l and xyz(l.AssemblyLinearVelocity)}
+if h.profile=="gameplay-debug"and l then
+local m=OverlapParams.new()m.MaxParts=e.limit or 20
+local n=workspace:GetPartBoundsInRadius(l.Position,e.radius or 30,m)
+h.nearby={}
+for o,p in ipairs(n)do table.insert(h.nearby,{entity=d:Identity(p),position=xyz(p.Position),velocity=xyz(p.AssemblyLinearVelocity)})end
+end
+h.events=d.journal:Read(e.sinceCursor or d.journal.last,10)
+h.collectionFinishedAtMs=now()
+h.collectionDurationMs=h.collectionFinishedAtMs-f
+h.latestEventSequence=d.journal.last
+d.observations[h.observationId]=h
+table.insert(d.order,h.observationId)
+if#d.order>40 then d.observations[table.remove(d.order,1)]=nil end
+return h
+end
+
+function c.Read(d,e)
+local f=d.observations[e]
+assert(f,"Observation expired or belongs to another connection.")
+return f
+end
+
+function c.ValidateObservation(d,e)
+local f=d:Read(e)
+local g=d:Geometry()
+assert(g.revision==f.geometryRevision,"Geometry changed; observe again before input.")
+assert(now()-f.collectionFinishedAtMs<30000,"Observation is stale; observe again.")
+return g
+end
+
+function c.Point(d,e)
+local f=d:ValidateObservation(e.observationId)
+if e.target then
+local g=d.inspector:Resolve(e.target)
+assert(g:IsA"GuiObject","Pointer target must be a GuiObject.")
+local h=d:GuiRecord(g)
+assert(h.effectiveVisible==true,"Target visibility is unavailable or hidden.")
+local i,j=g.AbsolutePosition.X,g.AbsolutePosition.Y
+local k,l=i+g.AbsoluteSize.X,j+g.AbsoluteSize.Y
+local m=g.Parent
+while m do
+if m:IsA"GuiObject"and m.ClipsDescendants then
+i,j=math.max(i,m.AbsolutePosition.X),math.max(j,m.AbsolutePosition.Y)
+k=math.min(k,m.AbsolutePosition.X+m.AbsoluteSize.X)
+l=math.min(l,m.AbsolutePosition.Y+m.AbsoluteSize.Y)
+end
+m=m.Parent
+end
+assert(k>i and l>j,"Target is fully clipped.")
+for n,o in ipairs{{.5,.5},{.2,.2},{.8,.2},{.2,.8},{.8,.8}}do
+local p,q=i+(k-i)*o[1],j+(l-j)*o[2]
+local r=d:HitTest(p,q)
+for s,t in ipairs(r.hits)do
+local u=d.inspector:Resolve{handle=t.Handle}
+if u==g or u:IsDescendantOf(g)then return p,q,g,r end
+
+
+if t.effectiveVisible==true and(t.active or t.interactive)then break end
+end
+end
+error"Target is obstructed at sampled points; inspect hit-test evidence."
+end
+assert(type(e.x)=="number"and type(e.y)=="number","Provide a GUI target or screen x/y.")
+assert(e.x>=0 and e.y>=0 and e.x<f.viewport.x and e.y<f.viewport.y,"Point is outside the current viewport.")
+return e.x,e.y,nil,d:HitTest(e.x,e.y)
+end
+
+function c.Overlay(d,e)
+if not e then if d.overlay then d.overlay:Destroy()d.overlay=nil end return end
+if d.overlay then return end
+local f=Instance.new"ScreenGui"f.Name="MCPPointerEvidence"f.IgnoreGuiInset=true f.DisplayOrder=100000
+local function dot(g,h)
+local i=Instance.new"Frame"i.Name=g i.Size=UDim2.fromOffset(8,8)
+i.AnchorPoint=Vector2.new(.5,.5)i.BackgroundColor3=h i.Active=false i.Parent=f
+return i
+end
+d.requestedDot=dot("Requested",Color3.fromRGB(220,150,40))
+d.observedDot=dot("Observed",Color3.fromRGB(50,210,130))
+f.Parent=d.playerGui d.overlay=f
+end
+
+function c.Cancel(d,e,f)
+local g=d.actions[e]assert(g,"Unknown action in this connection.")
+if g.state=="running"then
+g.cancelled=true g.failureReason=f or"cancelled"
+g.releaseFailures=d.controller:ReleaseAll()
+end
+return g
+end
+
+function c.StartAction(d,e)
+assert(not d.activeAction,"Another action is running.")
+local f,g,h,i
+if e.kind~="sequence"then f,g,h,i=d:Point(e)else d:ValidateObservation(e.observationId)end
+assert(#d.controller:State().held==0,"Release existing MCP input before starting an action.")
+local j="act_"..d.http:GenerateGUID(false)
+local k={actionId=j,sessionId=d.id,clientId=d.bridge.ClientId,state="running",
+beforeObservationId=e.observationId,startedAtMs=now(),dispatch="pending",hitTest=i,steps={}}
+d.actions[j]=k table.insert(d.actionOrder,j)
+if#d.actionOrder>64 then d.actions[table.remove(d.actionOrder,1)]=nil end
+d.activeAction,d.context.InputOwner=j,j
+d:Overlay(e.overlay==true)
+task.spawn(function()
+local l,m={},false
+local function check()
+assert(not k.cancelled and not d.closed and d.bridge.Connected,"Action interrupted.")
+assert(now()-k.startedAtMs<60000,"Action exceeded 60 seconds.")
+d:ValidateObservation(e.observationId)
+end
+local function wait(n)
+local o=os.clock()+n
+repeat check()task.wait(.02)until os.clock()>=o
+end
+local function send(n)
+check()
+k.dispatch="unknown"
+if(n.action=="mouse"or n.action=="scroll")and not n.relative and n.x~=nil then
+local o=d:Geometry()
+assert(n.x>=0 and n.y>=0 and n.x<o.viewport.x and n.y<o.viewport.y,"Input point is outside the viewport.")
+end
+local o=d.dispatchInput(n,j)
+if d.overlay then
+local p=d.controller:State()
+if p.requested then d.requestedDot.Position=UDim2.fromOffset(p.requested.x,p.requested.y)end
+if p.observed then d.observedDot.Position=UDim2.fromOffset(p.observed.x,p.observed.y)end
+end
+k.dispatch,k.backend="accepted",o.backend
+k.desktopInput=d.controller:UsesDesktopInput()
+table.insert(k.steps,{action=n.action,event=n.event,backend=o.backend,dispatch=o.dispatch})
+d:Emit("action-input",{actionId=j,input=n,result=o})
+return o
+end
+local n,o=pcall(function()
+if h and h:IsA"GuiButton"then
+local n=if e.kind=="activate"then h[e.event or"Activated"]else h.Activated
+table.insert(l,n:Connect(function()m=true end))
+end
+if e.kind=="activate"or e.kind=="set-text"then
+check()
+k.dispatch="unknown"
+k.method=if e.kind=="activate"then d.controller:Activate(h,e.event or"Activated")else d.controller:SetText(h,e.text)
+k.backend,k.desktopInput,k.dispatch=d.controller.backend,false,"accepted"
+k.signal=if e.kind=="activate"then e.event or"Activated"else nil
+k.note="Direct client GUI operation, not physical input. Callback/game effects require a postcondition."
+table.insert(k.steps,{action=e.kind,backend=k.backend,method=k.method,dispatch=k.dispatch})
+d:Emit("action-gui",{actionId=j,target=d:Identity(h),method=k.method,signal=k.signal})
+elseif e.kind=="sequence"then
+for n,o in ipairs(e.steps)do
+check()
+if o.action=="wait"then wait((o.durationMs or 0)/1000)else send(o)end
+end
+else
+send{action="mouse",event="move",x=f,y=g}
+if e.kind=="click"then send{action="mouse",event="click",x=f,y=g,button=e.button}end
+if e.kind=="drag"then
+send{action="mouse",event="down",x=f,y=g,button=e.button}
+for n,o in ipairs(e.path)do
+wait((o.durationMs or 30)/1000)
+send{action="mouse",event="move",x=o.x,y=o.y}
+end
+local n=e.path[#e.path]
+send{action="mouse",event="up",x=n.x,y=n.y,button=e.button}
+end
+end
+local n=now()+(e.timeoutMs or 1000)
+repeat
+check()
+if e.postcondition then
+local o=e.postcondition
+local p=d.inspector:Resolve(o.target)
+local q,r=d.inspector:ReadProperty(p,o.property,false)
+k.expectedEffectObserved=q and r==o.equals
+elseif e.kind=="set-text"then k.expectedEffectObserved=h.Text==e.text
+elseif e.kind~="activate"and h and h:IsA"GuiButton"then k.expectedEffectObserved=m end
+if k.expectedEffectObserved==true or not e.postcondition and not h then break end
+task.wait(.03)
+until now()>=n
+if e.kind=="activate"then k.signalObserved=m else k.inputObserved=m or nil end
+if m and e.kind~="activate"then d.context.RuntimeCapabilities:RecordUse("input.mouse",k.backend,true,true)end
+k.afterObservationId=d:Observe{profile="performance"}.observationId
+end)
+for p,q in ipairs(l)do q:Disconnect()end
+k.releaseFailures=d.controller:ReleaseAll()
+k.state=if k.cancelled then"cancelled"elseif not n or#k.releaseFailures>0 then"failed"elseif k.expectedEffectObserved==false or e.kind=="activate"and k.expectedEffectObserved~=true then"unverified"else"completed"
+k.failureReason=k.failureReason or(if not n then string.sub(tostring(o),1,300)else nil)
+k.finishedAtMs=now()
+d.activeAction=nil
+if d.context.InputOwner==j then d.context.InputOwner=nil end
+d:Emit("action-finished",k)
+end)
+return k
+end
+
+function c.Destroy(d)
+if d.activeAction then d:Cancel(d.activeAction,"connector-disconnected")end
+d.closed=true d:Overlay(false)
+for e,f in ipairs(d.connections)do f:Disconnect()end
+d.context.ObservationSink=nil
+end
+return c end function a.U():typeof(__modImpl())local b=a.cache.U if not b then b={c=__modImpl()}a.cache.U=b end return b.c end end do local function __modImpl()
+
+local b=a.U()
+
+return function(c,d)
+local e=b.new(c,d)
+local f={
+Version=1,
+Emit=function(f,g,h)e:Emit("diagnostic:"..tostring(g),h)end,
+SetBuild=function(f,g)
+assert(type(g)=="table"and#e.http:JSONEncode(g)<8000,"Build manifest must fit 8000 bytes.")
+e.build=e.http:JSONDecode(e.http:JSONEncode(g))
+end,
+RegisterState=function(f,g,h)
+assert(type(g)=="string"and#g<=100 and type(h)=="function","Provide a state name and callback.")
+local i=0 for j in pairs(e.instrumentedStates)do i+=1 end
+assert(i<16 or e.instrumentedStates[g],"At most 16 named state exports.")
+e.instrumentedStates[g]=h
+return function()e.instrumentedStates[g]=nil end
+end,
+}
+getgenv().MCPDiagnostics=f
+local function bind(g,h)d:BindToTypeStructured(g,h)end
+bind("observe",function(g)return e:Observe(g)end)
+bind("observation-read",function(g)return e:Read(g.observationId)end)
+bind("console-read",function(g)return e:ReadConsole(g)end)
+bind("gui-query",function(g)return e:GuiQuery(g)end)
+bind("gui-inspect",function(g)return e:GuiRecord(e.inspector:Resolve(g.target))end)
+bind("gui-hit-test",function(g)return e:HitTest(g.x,g.y)end)
+for g,h in ipairs{"activate","set-text"}do
+bind("gui-"..h,function(i)i.kind=h return e:StartAction(i)end)
+end
+bind("cursor-state",function()return{sessionId=e.id,clientId=d.ClientId,cursor=c.InputController:State(),geometry=e:Geometry(),activeActionId=e.activeAction}end)
+for g,h in ipairs{"move","click","drag"}do
+bind("cursor-"..h,function(i)i.kind=h return e:StartAction(i)end)
+end
+for g,h in ipairs{"input-sequence","scenario-run"}do
+bind(h,function(i)i.kind="sequence"return e:StartAction(i)end)
+end
+for g,h in ipairs{"action-status","scenario-status"}do
+bind(h,function(i)local j=e.actions[i.actionId]assert(j,"Action expired or connection changed.")return j end)
+end
+for g,h in ipairs{"action-cancel","scenario-cancel"}do bind(h,function(i)return e:Cancel(i.actionId)end)end
+bind("observation-events",function(g)
+local h=e.journal:Read(g.cursor or 0,math.clamp(g.limit or 20,1,50))
+h.sessionId=e.id
+return h
+end)
+bind("observation-coverage",function()
+return{sessionId=e.id,scope="client",atomic=false,profiles={"ui-debug","gameplay-debug","performance"},
+collectors={gui="bounded PlayerGui",world="bounded nearby parts",player="local character",camera="current camera",
+console="events since connection",input="observed input events",dex="explicit active watches",diagnostics="named project events"},
+unavailable={"server-only state","streamed-out instances","historical source without a build manifest"},
+journal=e.journal:Read(e.journal.last,1)}
+end)
+bind("collector-status",function()
+local g={}for h in pairs(e.instrumentedStates)do table.insert(g,h)end
+return{sessionId=e.id,connected=d.Connected,stateExports=g,build=e.build,
+eventCounters=e.journal:Read(e.journal.last,1),observationCount=#e.order,activeActionId=e.activeAction}
+end)
+bind("diagnostic-state",function(g)
+local h=e.instrumentedStates[g.name]assert(h,"Named state is not registered.")
+local i,j,k=false,false
+local l=task.spawn(function()j,k=pcall(h)i=true end)
+local m=os.clock()+2
+while not i and os.clock()<m and not e.closed do task.wait(.02)end
+if not i then pcall(task.cancel,l)error"Named state callback timed out or disconnected."end
+assert(j,"Named state callback failed.")
+e:Emit("state:"..g.name,k)
+return e.journal:Read(e.journal.last-1,1)
+end)
+return function()
+e:Destroy()
+if getgenv().MCPDiagnostics==f then getgenv().MCPDiagnostics=nil end
+end
+end end function a.V():typeof(__modImpl())local b=a.cache.V if not b then b={c=__modImpl()}a.cache.V=b end return b.c end end do local function __modImpl()
 
 return function(b)
 local c=b.CreateBridge
@@ -9185,15 +10198,14 @@ g()
 end
 end
 
-local p={a.u()
-,a.v()
+local p={a.v()
 ,a.w()
-,a.y()
+,a.x()
 ,a.z()
 ,a.A()
 ,a.B()
 ,a.C()
-,a.G()
+,a.D()
 ,a.H()
 ,a.I()
 ,a.J()
@@ -9203,7 +10215,9 @@ local p={a.u()
 ,a.N()
 ,a.O()
 ,a.P()
-,a.Q()
+,a.R()
+,a.S()
+,a.V()
 ,
 }
 local q={}
@@ -9212,24 +10226,21 @@ for r,s in p do
 local t=s(b,n)
 if type(t)=="function"then table.insert(q,t)end
 end
+n.Ready=true
 n:WaitForDisconnect()
 end)
+n:Disconnect()
 for t=#q,1,-1 do pcall(q[t])end
 
 if e.bridge==n then
 e.bridge=nil
 end
 if not r then
-n.Connected=false
-for t,u in{n.AliveThread,n.PollThread}do
-pcall(task.cancel,u)
-end
-pcall(function()if n.WebSocket then n.WebSocket:Close()end end)
 error(s,0)
 end
 task.wait(1)
 end
-end end function a.R():typeof(__modImpl())local b=a.cache.R if not b then b={c=__modImpl()}a.cache.R=b end return b.c end end end
+end end function a.W():typeof(__modImpl())local b=a.cache.W if not b then b={c=__modImpl()}a.cache.W=b end return b.c end end end
 
 
 
@@ -9303,177 +10314,180 @@ local l:HttpService=f(game:GetService"HttpService")
 local m:LogService=f(game:GetService"LogService")
 local n:Players=f(game:GetService"Players")
 local o:TweenService=f(game:GetService"TweenService")
+local p=f(game:GetService"VirtualUser")
 
 
 
-local p
+local q
 do
 
 
 
 
-local q='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local r='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 
-p=base64encode or function(r)
-return((r:gsub('.',function(s)
-local t,u='',s:byte()
-for v=8,1,-1 do t=t..(u%2^v-u%2^(v-1)>0 and'1'or'0')end
-return t
-end)..'0000'):gsub('%d%d%d?%d?%d?%d?',function(s)
-if(#s<6)then return''end
-local t=0
-for u=1,6 do t=t+(s:sub(u,u)=='1'and 2^(6-u)or 0)end
-return q:sub(t+1,t+1)
-end)..({'','==','='})[#r%3+1])
+q=base64encode or function(s)
+return((s:gsub('.',function(t)
+local u,v='',t:byte()
+for w=8,1,-1 do u=u..(v%2^w-v%2^(w-1)>0 and'1'or'0')end
+return u
+end)..'0000'):gsub('%d%d%d?%d?%d?%d?',function(t)
+if(#t<6)then return''end
+local u=0
+for v=1,6 do u=u+(t:sub(v,v)=='1'and 2^(6-v)or 0)end
+return r:sub(u+1,u+1)
+end)..({'','==','='})[#s%3+1])
 end
 end
 
 
 
-local q=type(getscripthash)=="function"and getscripthash or nil
-local r=type(decompile)=="function"and decompile or nil
+local r=type(getscripthash)=="function"and getscripthash or nil
+local s=type(decompile)=="function"and decompile or nil
 
-local s=a.a()
-
-
+local t=a.a()
 
 
-local t=8
-local u=256
-local v=2000
-local w=500
-local x=131072
 
-local function SanitizeString(y,z)
-y=tostring(y)
-local A=math.max(0,math.min(w,z.stringBytes))
-if A==0 then return"<string omitted: output budget reached>"end
 
-local B={}
-local C=0
-local D=pcall(function()
-for D,E in utf8.codes(y)do
-local F=utf8.char(E)
-if C+#F>A then break end
-table.insert(B,F)
-C+=#F
+local u=8
+local v=256
+local w=2000
+local x=500
+local y=131072
+
+local function SanitizeString(z,A)
+z=tostring(z)
+local B=math.max(0,math.min(x,A.stringBytes))
+if B==0 then return"<string omitted: output budget reached>"end
+
+local C={}
+local D=0
+local E=pcall(function()
+for E,F in utf8.codes(z)do
+local G=utf8.char(F)
+if D+#G>B then break end
+table.insert(C,G)
+D+=#G
 end
 end)
-local E
-if D then
-E=table.concat(B)
+local F
+if E then
+F=table.concat(C)
 else
-E=string.sub(string.gsub(y,"[^%g ]","?"),1,A)
-C=#E
+F=string.sub(string.gsub(z,"[^%g ]","?"),1,B)
+D=#F
 end
 
-z.stringBytes=math.max(0,z.stringBytes-C)
-return#E<#y and(E.."...(truncated)")or E
+A.stringBytes=math.max(0,A.stringBytes-D)
+return#F<#z and(F.."...(truncated)")or F
 end
 
-local function SanitizeForOutput(y,z,A,B)
-z=z or 0
-B=B or{
-entries=v,
-stringBytes=x,
+local function SanitizeForOutput(z,A,B,C)
+A=A or 0
+C=C or{
+entries=w,
+stringBytes=y,
 }
-local C=typeof(y)
+local D=typeof(z)
 
-if C=="Instance"then
-local D,E=pcall(function()return y:GetFullName()end)
-return SanitizeString(D and E or y,B)
-elseif C=="string"then
-return SanitizeString(y,B)
-elseif C=="number"then
-if y~=y then return"<nan>"end
-if y==math.huge then return"<infinity>"end
-if y==-math.huge then return"<-infinity>"end
-return y
-elseif C=="boolean"or C=="nil"then
-return y
-elseif C~="table"then
+if D=="Instance"then
+local E,F=pcall(function()return z:GetFullName()end)
+return SanitizeString(E and F or z,C)
+elseif D=="string"then
+return SanitizeString(z,C)
+elseif D=="number"then
+if z~=z then return"<nan>"end
+if z==math.huge then return"<infinity>"end
+if z==-math.huge then return"<-infinity>"end
+return z
+elseif D=="boolean"or D=="nil"then
+return z
+elseif D~="table"then
 
-local D,E=pcall(tostring,y)
-return SanitizeString(D and E or"<unprintable value>",B)
+local E,F=pcall(tostring,z)
+return SanitizeString(E and F or"<unprintable value>",C)
 end
 
-if z>=t then
+if A>=u then
 return"<table: max depth reached>"
 end
 
-A=A or{}
-if A[y]then
+B=B or{}
+if B[z]then
 return"<cyclic table>"
 end
-A[y]=true
+B[z]=true
 
-local D={}
-local E=#y
-local F=E>0
-if F then
-local G=0
-for H in pairs(y)do
-G+=1
-if type(H)~="number"or H%1~=0 or H<1 or H>E then
-F=false
+local E={}
+local F=#z
+local G=F>0
+if G then
+local H=0
+for I in pairs(z)do
+H+=1
+if type(I)~="number"or I%1~=0 or I<1 or I>F then
+G=false
 break
 end
-if G>=u+1 then break end
+if H>=v+1 then break end
 end
 end
 
-if F then
-local G=math.min(E,u)
-local H=0
-for I=1,G do
-if B.entries<=0 then break end
-B.entries-=1
-H+=1
-D[I]=SanitizeForOutput(y[I],z+1,A,B)
+if G then
+local H=math.min(F,v)
+local I=0
+for J=1,H do
+if C.entries<=0 then break end
+C.entries-=1
+I+=1
+E[J]=SanitizeForOutput(z[J],A+1,B,C)
 end
-if E>H then
-D[H+1]={
-__omitted=tostring(E-H).." additional array entries omitted",
+if F>I then
+E[I+1]={
+__omitted=tostring(F-I).." additional array entries omitted",
 }
 end
-A[y]=nil
-return D
+B[z]=nil
+return E
 end
 
-local G=0
-local H=false
-for I,J in pairs(y)do
-if G>=u or B.entries<=0 then
-H=true
+local H=0
+local I=false
+for J,K in pairs(z)do
+if H>=v or C.entries<=0 then
+I=true
 break
 end
-G+=1
-B.entries-=1
+H+=1
+C.entries-=1
 
 
-local K=SanitizeString(typeof(I)=="string"and I or tostring(I),B)
-D[K]=SanitizeForOutput(J,z+1,A,B)
+local L=SanitizeString(typeof(J)=="string"and J or tostring(J),C)
+E[L]=SanitizeForOutput(K,A+1,B,C)
 end
-if H then
-D.__omitted="additional entries omitted"
-end
-
-A[y]=nil
-return D
+if I then
+E.__omitted="additional entries omitted"
 end
 
-
-
-local function StripDecompilerBanner(y)
-if typeof(y)~="string"then return y end
-return(string.gsub(y,"^%s*%-%-[^\n]*[Dd]ecompiled[^\n]*\n","",1))
+B[z]=nil
+return E
 end
 
-local y=getnilinstances or function()return{}end
 
 
-local z,A=a.b().Resolve(getgenv())
+local function StripDecompilerBanner(z)
+if typeof(z)~="string"then return z end
+return(string.gsub(z,"^%s*%-%-[^\n]*[Dd]ecompiled[^\n]*\n","",1))
+end
+
+local z=getnilinstances or function()return{}end
+
+
+local A,B,C=a.b().Resolve(getgenv(),{
+ProbeUrl=c,
+})
 
 
 
@@ -9493,52 +10507,52 @@ end
 return nil
 end
 
-local B=ResolveWebSocketConnect()
-local C=B~=nil and getgenv().DisableWebSocket~=true
+local D=ResolveWebSocketConnect()
+local E=D~=nil and getgenv().DisableWebSocket~=true
 
 
 local function GenerateSessionGuid()
-local D,E=pcall(function()
+local F,G=pcall(function()
 return l:GenerateGUID(false)
 end)
-if D and type(E)=="string"and E~=""then
-return E
+if F and type(G)=="string"and G~=""then
+return G
 end
 return tostring(os.clock()).."-"..tostring(math.random(1,1000000000))
 end
 
 local function GetClientIdentityKey()
-local D=n.LocalPlayer
+local F=n.LocalPlayer
 return table.concat({
 tostring(game.PlaceId or 0),
 tostring(game.JobId or""),
-tostring(D and D.UserId or 0),
+tostring(F and F.UserId or 0),
 },":")
 end
 
 local function GetStableClientSessionId()
-local D=GetClientIdentityKey()
-if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=D then
+local F=GetClientIdentityKey()
+if type(getgenv().MCP_ClientSessionId)~="string"or getgenv().MCP_ClientIdentityKey~=F then
 getgenv().MCP_ClientSessionId=GenerateSessionGuid()
-getgenv().MCP_ClientIdentityKey=D
+getgenv().MCP_ClientIdentityKey=F
 end
 return getgenv().MCP_ClientSessionId
 end
 
 local function GetRegistrationInfo()
-local D=n.LocalPlayer
-local E="Unknown"
+local F=n.LocalPlayer
+local G="Unknown"
 pcall(function()
-local F=h:GetProductInfo(game.PlaceId)
-E=F.Name
+local H=h:GetProductInfo(game.PlaceId)
+G=H.Name
 end)
 return{
 type="register",
-username=D and D.Name or"Unknown",
-userId=D and D.UserId or 0,
+username=F and F.Name or"Unknown",
+userId=F and F.UserId or 0,
 placeId=game.PlaceId,
 jobId=game.JobId,
-placeName=E,
+placeName=G,
 sessionId=GetStableClientSessionId(),
 clientToken=getgenv().MCP_ClientToken,
 }
@@ -9546,181 +10560,193 @@ end
 
 
 
-local D=a.c().new{
+local F=a.c().new{
 RegistryId=GenerateSessionGuid(),
 MaxHandles=getgenv().MCP_RuntimeMaxHandles,
 DefaultTtlSeconds=getgenv().MCP_RuntimeHandleTtlSeconds,
 }
-local E=a.e().new{
-Handles=D,
+local G=a.e().new{
+Handles=F,
 DefaultDepth=getgenv().MCP_RuntimeValueDepth,
 DefaultEntries=getgenv().MCP_RuntimeValueEntries,
 DefaultStringBytes=getgenv().MCP_RuntimeValueStringBytes,
 }
-local F=a.f().new{
+local H=a.f().new{
 ConnectorVersion="3",
-RequestAvailable=z~=nil,
-HttpRequestProvider=A,
-WebSocketAvailable=C,
+RequestAvailable=A~=nil,
+HttpRequestProvider=B,
+HttpRequestStatus=C,
+WebSocketAvailable=E,
 }
-local G=a.g().new{
-Handles=D,
-TypedValues=E,
+local I=a.g().new{
+Handles=F,
+TypedValues=G,
 MaxSnapshots=getgenv().MCP_GcMaxSnapshots,
 DefaultScanLimit=getgenv().MCP_GcDefaultScanLimit,
 TableScanLimit=getgenv().MCP_GcTableScanLimit,
 }
-local H=a.h(){
+local J=a.h(){
 CoreGui=i,
 TweenService=o,
 }
 
 
-local I=a.i(){
+local K=a.i(){
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeWebSocketURL=d,
 BridgeAuthToken=e,
 BridgeRequestHeaders=BridgeRequestHeaders,
-Request=z,
-HttpGet=function(I)return game:HttpGet(I)end,
-WebSocketAvailable=C,
-WebSocketConnect=B,
+Request=A,
+HttpGet=function(K)return game:HttpGet(K)end,
+WebSocketAvailable=E,
+WebSocketConnect=D,
 GetRegistrationInfo=GetRegistrationInfo,
 SanitizeForOutput=SanitizeForOutput,
-LuaEncode=s,
+LuaEncode=t,
 }
-local J=I.CreateBridge
+local L=K.CreateBridge
 
 
-local K=a.j()
-local L=a.k()
-local M=a.l()
-local N=a.m()
-local O=a.n()
-local P=L.new()
-local Q=math.max(
+local M=a.j()
+local N=a.k()
+local O=a.l()
+local P=a.m()
+local Q=a.n()
+local R=N.new()
+local S=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_ScriptMappingWorkers)or 24),64)
 )
-local R=a.o().new(
-P,
-Q
+local T=a.o().new(
+R,
+S
 )
-local S=math.max(
+local U=math.max(
 5,
 math.min(tonumber(getgenv().MCP_FailedScriptResyncInterval)or 30,600)
 )
-local T=a.p().new(P,{
-IntervalSeconds=S,
-MaxDelaySeconds=math.max(S,300),
+local V=a.p().new(R,{
+IntervalSeconds=U,
+MaxDelaySeconds=math.max(U,300),
 BatchSize=math.max(
 1,
 math.min(math.floor(tonumber(getgenv().MCP_FailedScriptResyncBatchSize)or 8),32)
 ),
 })
-local U=a.q().new(
-P,
-T
+local W=a.q().new(
+R,
+V
 )
-local V=a.r(){
-ScriptMappingPipeline=P,
+local X=a.r(){
+ScriptMappingPipeline=R,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
-Request=z,
-JobStatus=U,
+Request=A,
+JobStatus=W,
 }
-local W=a.s(){
-ScriptMappingPipeline=P,
+local Y=a.s(){
+ScriptMappingPipeline=R,
 HttpService=l,
 BridgeHTTPURL=c,
 BridgeRequestHeaders=BridgeRequestHeaders,
-Request=z,
+Request=A,
 StripDecompilerBanner=StripDecompilerBanner,
-base64_encode=p,
-BuiltInDecompile=r,
-GetScriptHash=q,
-DecompilerAttemptState=N,
-PreparedScript=O,
-Concurrency=R,
+base64_encode=q,
+BuiltInDecompile=s,
+GetScriptHash=r,
+DecompilerAttemptState=P,
+PreparedScript=Q,
+Concurrency=T,
 }
-local X=a.t(){
-ScriptMappingPipeline=P,
-WorkerPool=K,
-UploadSession=M,
+local Z=a.t(){
+ScriptMappingPipeline=R,
+WorkerPool=M,
+UploadSession=O,
 GenerateSessionGuid=GenerateSessionGuid,
 CoreGui=i,
 CorePackages=j,
 ScriptContext=k,
-getnilinstances=y,
-WorkerCount=Q,
-Concurrency=R,
-JobStatus=U,
-FailedResync=T,
-UploadClient=V,
-DecompilerClient=W,
+getnilinstances=z,
+WorkerCount=S,
+Concurrency=T,
+JobStatus=W,
+FailedResync=V,
+UploadClient=X,
+DecompilerClient=Y,
 }
-local Y=V.StartUploadQueue
+local aa=X.StartUploadQueue
 local function PublishScriptMappingStatus()
-U:Publish()
+W:Publish()
 end
-local Z=X.StartScriptMapping
-local aa=X.StartFailedScriptResync
-local ab=X.ResetScriptMappingState
-local ac=X.ResumeDeferredScriptMappings
-local ad=X.GetScriptByDebugId
-local ae=X.QueueMappedScriptSource
-local af=X.DecompileScriptSource
+local ab=Z.StartScriptMapping
+local ac=Z.StartFailedScriptResync
+local ad=Z.ResetScriptMappingState
+local ae=Z.ResumeDeferredScriptMappings
+local af=Z.GetScriptByDebugId
+local ag=Z.QueueMappedScriptSource
+local ah=Z.DecompileScriptSource
 
-local function WaitForBridgeClientId(ag)
-local ah=os.clock()+5
+local function WaitForBridgeClientId(ai)
+local aj=os.clock()+5
 repeat
-if ag.ClientId then
-return ag.ClientId
+if ai.ClientId then
+return ai.ClientId
 end
-if not ag.Connected then
+if not ai.Connected then
 return nil
 end
 task.wait(0.05)
-until os.clock()>ah
+until os.clock()>aj
 
 return nil
 end
 
 getgenv().MCP_Loaded=true
 getgenv().MCP_Loading=nil
-local ag,ah=pcall(function()a.R()
+while n.LocalPlayer==nil do n:GetPropertyChangedSignal"LocalPlayer":Wait()end
+local ai=a.u(){
+Player=n.LocalPlayer,
+KeepAlive=function()
+p:CaptureController()
+p:ClickButton2(Vector2.zero)
+end,
+}
+local aj,ak=pcall(function()a.W()
 {
-CreateBridge=J,
+CreateBridge=L,
 WaitForBridgeClientId=WaitForBridgeClientId,
-ScriptMappingPipeline=P,
-StartUploadQueue=Y,
+ScriptMappingPipeline=R,
+StartUploadQueue=aa,
 PublishScriptMappingStatus=PublishScriptMappingStatus,
-ResetScriptMappingState=ab,
-StartScriptMapping=Z,
-StartFailedScriptResync=aa,
-ResumeDeferredScriptMappings=ac,
-GetScriptByDebugId=ad,
-DecompileScriptSource=af,
-QueueMappedScriptSource=ae,
+ResetScriptMappingState=ad,
+StartScriptMapping=ab,
+StartFailedScriptResync=ac,
+ResumeDeferredScriptMappings=ae,
+GetScriptByDebugId=af,
+DecompileScriptSource=ah,
+QueueMappedScriptSource=ag,
 LogService=m,
 MarketplaceService=h,
 VirtualInputManager=g,
 Players=n,
-LuaEncode=s,
-WebSocketAvailable=C,
-RequestAvailable=z~=nil,
-HttpRequestProvider=A,
-RuntimeHandles=D,
-RuntimeValues=E,
-RuntimeCapabilities=F,
-GcExplorer=G,
-ToastHost=H,
+LuaEncode=t,
+WebSocketAvailable=E,
+RequestAvailable=A~=nil,
+HttpRequestProvider=B,
+HttpRequestStatus=C,
+RuntimeHandles=F,
+RuntimeValues=G,
+RuntimeCapabilities=H,
+GcExplorer=I,
+ToastHost=J,
+AntiAFK=ai,
 }
 end)
-if not ag then
+if not aj then
+ai.Destroy()
 getgenv().MCP_Loaded=nil
 getgenv().MCP_Loading=nil
-error(ah)
+error(ak)
 end

@@ -8,6 +8,9 @@ export interface StoredScriptSource {
   scriptHash?: string;
   sourceHash: string;
   updatedAt: number;
+  sourceKind?: "original" | "decompiled" | "normalized" | "stub" | "unknown";
+  sourceProducer?: string;
+  producerVersion?: string;
 }
 
 export interface ScriptSourceIndex {
@@ -71,6 +74,9 @@ export interface UpsertScriptSourcesInput {
     path?: unknown;
     source?: unknown;
     scriptHash?: unknown;
+    sourceKind?: unknown;
+    sourceProducer?: unknown;
+    producerVersion?: unknown;
   }[];
 }
 
@@ -84,6 +90,20 @@ export interface CachedScriptSourceByHash {
 }
 
 const storesByClientId: Map<string, ClientScriptSourceStore> = new Map();
+type SourceStoreEvent = { clientId: string; kind: "changed" | "reset" };
+const sourceListeners = new Set<(event: SourceStoreEvent) => void>();
+export function onScriptSourceChange(listener: (event: SourceStoreEvent) => void): () => void {
+  sourceListeners.add(listener);
+  return () => { sourceListeners.delete(listener); };
+}
+function sourceEvent(clientId: string, kind: SourceStoreEvent["kind"]): void {
+  for (const listener of sourceListeners) { try { listener({ clientId, kind }); } catch {} }
+}
+function analysisSignature(store: ClientScriptSourceStore): string {
+  if (!sourceListeners.size) return "";
+  const records = store.mappingSessionId ? store.activeScripts : store.scripts;
+  return JSON.stringify([...records.values()].map(s => [s.debugId, s.path, s.sourceHash, s.sourceKind, s.sourceProducer, s.producerVersion]));
+}
 
 function configuredLimit(name: string, fallback: number, maximum: number): number {
   const parsed = Number(process.env[name]);
@@ -153,6 +173,7 @@ function normalizeScriptHash(value: unknown): string | undefined {
 function getOrCreateStore(identity: ScriptSourceStoreIdentity): ClientScriptSourceStore {
   let store = storesByClientId.get(identity.clientId);
   if (!store || store.placeId !== identity.placeId || store.jobId !== identity.jobId) {
+    if (store) sourceEvent(identity.clientId, "reset");
     if (store) clearSemanticIndexForClient(identity.clientId);
     store = {
       placeId: identity.placeId,
@@ -320,6 +341,8 @@ export function upsertScriptSources(
   input: UpsertScriptSourcesInput
 ): ScriptSourceUpsertResult {
   const store = getOrCreateStore(identity);
+  const previousSession = store.mappingSessionId;
+  const previousAnalysis = analysisSignature(store);
   const revision = applyMappingRevision(store, input);
   const inputRevision =
     typeof input.mappingRevision === "number" && Number.isSafeInteger(input.mappingRevision)
@@ -366,12 +389,17 @@ export function upsertScriptSources(
     const existing = store.scripts.get(script.debugId);
     const sourceHash = hashSource(script.source);
     const scriptHash = normalizeScriptHash(script.scriptHash);
+    const sourceKind = ["original", "decompiled", "normalized", "stub", "unknown"].includes(String(script.sourceKind))
+      ? script.sourceKind as StoredScriptSource["sourceKind"] : existing?.sourceKind ?? "unknown";
+    const sourceProducer = typeof script.sourceProducer === "string" ? script.sourceProducer.slice(0, 160) : existing?.sourceProducer;
+    const producerVersion = typeof script.producerVersion === "string" ? script.producerVersion.slice(0, 160) : existing?.producerVersion;
 
     if (existing && existing.sourceHash === sourceHash) {
       const updated = {
         ...existing,
         path: script.path,
         scriptHash: scriptHash ?? existing.scriptHash,
+        sourceKind, sourceProducer, producerVersion,
       };
       store.scripts.set(script.debugId, updated);
       updateScriptHashIndex(store, updated);
@@ -399,6 +427,7 @@ export function upsertScriptSources(
       scriptHash,
       sourceHash,
       updatedAt: Date.now(),
+      sourceKind, sourceProducer, producerVersion,
     };
     store.scripts.set(script.debugId, updated);
     store.scriptBytes = projectedBytes;
@@ -422,10 +451,9 @@ export function upsertScriptSources(
     }
   }
 
-  return {
-    ...getScriptSourceIndexSummary(identity, store),
-    acceptedMappingRevision: revision.acceptedMappingRevision,
-  };
+  if (previousSession !== store.mappingSessionId) sourceEvent(identity.clientId, "reset");
+  else if (previousAnalysis !== analysisSignature(store)) sourceEvent(identity.clientId, "changed");
+  return { ...getScriptSourceIndexSummary(identity, store), acceptedMappingRevision: revision.acceptedMappingRevision };
 }
 
 export function getCachedScriptSourcesByScriptHashResult(
@@ -499,6 +527,7 @@ export function getScriptSourceIndex(identity: ScriptSourceStoreIdentity): Scrip
 }
 
 export function clearScriptSourceIndex(clientId: string): void {
+  sourceEvent(clientId, "reset");
   storesByClientId.delete(clientId);
   clearSemanticIndexForClient(clientId);
 }

@@ -37,12 +37,15 @@ const UPDATE_CUTOVER_TIMEOUT_MS =
 const INTERNAL_INITIALIZE_ID = "__roblox_mcp_adapter_initialize__";
 
 const stdio = new StdioServerTransport();
+interface SessionReplay {
+  resolve?: () => void;
+  reject?: (error: Error) => void;
+}
 let upstream: StreamableHTTPClientTransport;
 let reconnectPromise: Promise<void> | null = null;
 let initializeMessage: JSONRPCMessage | null = null;
 let initializedMessage: JSONRPCMessage | null = null;
-let internalInitializeResolve: (() => void) | null = null;
-let internalInitializeReject: ((error: Error) => void) | null = null;
+const sessionReplays = new WeakMap<StreamableHTTPClientTransport, SessionReplay>();
 let connectedCoreInstanceId: string | null = null;
 let coreMonitor: NodeJS.Timeout | null = null;
 let coreMonitorRunning = false;
@@ -75,11 +78,11 @@ function createUpstream(): StreamableHTTPClientTransport {
   );
 
   transport.onmessage = (message) => {
-    if (messageId(message) === INTERNAL_INITIALIZE_ID && internalInitializeResolve) {
-      const resolve = internalInitializeResolve;
-      internalInitializeResolve = null;
-      internalInitializeReject = null;
-      resolve();
+    const replay = sessionReplays.get(transport);
+    if (messageId(message) === INTERNAL_INITIALIZE_ID && replay) {
+      // Keep internal responses private even if the handshake already failed.
+      if ("error" in message) replay.reject?.(new Error(message.error.message));
+      else replay.resolve?.();
       return;
     }
     void stdio.send(message).catch((error) => {
@@ -87,10 +90,8 @@ function createUpstream(): StreamableHTTPClientTransport {
     });
   };
   transport.onerror = (error) => {
-    if (internalInitializeReject) {
-      const reject = internalInitializeReject;
-      internalInitializeResolve = null;
-      internalInitializeReject = null;
+    const reject = sessionReplays.get(transport)?.reject;
+    if (reject) {
       reject(error);
       return;
     }
@@ -210,22 +211,25 @@ async function replaySession(transport: StreamableHTTPClientTransport): Promise<
     id: INTERNAL_INITIALIZE_ID,
   } as JSONRPCMessage;
 
+  const replay: SessionReplay = {};
+  sessionReplays.set(transport, replay);
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      internalInitializeResolve = null;
-      internalInitializeReject = null;
       reject(new Error("Timed out reinitializing the background MCP session."));
     }, 5_000);
 
-    internalInitializeResolve = () => {
+    replay.resolve = () => {
       clearTimeout(timeout);
       resolve();
     };
-    internalInitializeReject = (error) => {
+    replay.reject = (error) => {
       clearTimeout(timeout);
       reject(error);
     };
-    void transport.send(replayInitialize).catch(internalInitializeReject);
+    void transport.send(replayInitialize).catch(replay.reject);
+  }).finally(() => {
+    replay.resolve = undefined;
+    replay.reject = undefined;
   });
 
   await transport.send(initializedMessage);
@@ -282,8 +286,11 @@ async function forwardToCore(message: JSONRPCMessage): Promise<void> {
   if (method === "initialize") initializeMessage = message;
   if (method === "notifications/initialized") initializedMessage = message;
 
-  const current = upstream;
+  let current = upstream;
   try {
+    // Traffic that has not been dispatched yet can safely wait for the new session.
+    if (reconnectPromise) await reconnectPromise;
+    current = upstream;
     await current.send(message);
   } catch (error) {
     await reconnect(current).catch((reconnectError) => {

@@ -11,6 +11,7 @@ import {
 import {
   requestLuraphDevirtualization,
   type LuraphCaptureMode,
+  type RecoveryArtifact,
 } from "../../../luraph/client.js";
 import {
   clientStampPrefix,
@@ -28,7 +29,7 @@ const DEFAULT_PREVIEW_LINES = 120;
 const MAX_READ_LINES = 2000;
 const RESULT_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHED_RESULTS = 12;
-const MAX_CACHED_SOURCE_CHARS = 8 * 1024 * 1024;
+const MAX_CACHED_SOURCE_CHARS = 48 * 1024 * 1024;
 const MAX_WORKER_RESULT_CHARS = 1024 * 1024;
 export const MAX_DIRECT_LURAPH_SOURCE_BYTES = 4 * 1024 * 1024;
 
@@ -81,6 +82,9 @@ export const devirtualizeLuraphInputSchema = z.discriminatedUnion("operation", [
     resultId: z.string().uuid(),
     startLine: z.number().int().min(1).optional().default(1),
     maxLines: z.number().int().min(1).max(MAX_READ_LINES).optional().default(200),
+    artifactId: z.string().min(1).max(32).optional().describe("Read exact artifact bytes as base64 instead of the selected source. IDs are in the result manifest."),
+    byteOffset: z.number().int().min(0).optional().default(0),
+    maxBytes: z.number().int().min(1).max(12000).optional().default(3000),
   }),
   z.object({
     operation: z.literal("release"),
@@ -96,6 +100,8 @@ export interface LuraphExecutionResult {
 }
 
 interface CachedResult {
+  artifacts?: RecoveryArtifact[];
+  recoveryMetadata?: Record<string, unknown>;
   id: string;
   clientId?: string;
   sourceKind: "indexed" | "raw";
@@ -114,7 +120,7 @@ function cleanupCachedResults(now = Date.now()): void {
     if (result.expiresAt <= now) cachedResults.delete(id);
   }
   let retainedChars = [...cachedResults.values()]
-    .reduce((total, result) => total + result.source.length, 0);
+    .reduce((total, result) => total + result.source.length + (result.artifacts ?? []).reduce((n, a) => n + a.contentBase64.length, 0), 0);
   while (
     cachedResults.size > MAX_CACHED_RESULTS ||
     retainedChars > MAX_CACHED_SOURCE_CHARS
@@ -124,7 +130,7 @@ function cleanupCachedResults(now = Date.now()): void {
       | undefined;
     if (!oldest) break;
     cachedResults.delete(oldest[0]);
-    retainedChars -= oldest[1].source.length;
+    retainedChars -= oldest[1].source.length + (oldest[1].artifacts ?? []).reduce((n, a) => n + a.contentBase64.length, 0);
   }
 }
 
@@ -173,6 +179,9 @@ export function formatLuraphResultRange(source: string, startLine: number, maxLi
 }
 
 export function readCachedLuraphResult(input: {
+  artifactId?: string;
+  byteOffset?: number;
+  maxBytes?: number;
   clientId?: string;
   resultId: string;
   startLine: number;
@@ -187,10 +196,29 @@ export function readCachedLuraphResult(input: {
     return { ok: false, text: "Luraph result was not found, expired, or belongs to another client." };
   }
   result.expiresAt = Date.now() + RESULT_TTL_MS;
+  const artifacts = (result.artifacts ?? []).map(({ contentBase64, ...metadata }) => metadata);
+  if (input.artifactId !== undefined) {
+    const artifact = result.artifacts?.find(a => a.id === input.artifactId);
+    if (!artifact) return { ok: false, text: "Artifact not retained or unknown artifact ID." };
+    const bytes = Buffer.from(artifact.contentBase64, "base64");
+    const offset = input.byteOffset ?? 0;
+    const maxBytes = input.maxBytes ?? 3000;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > bytes.length ||
+        !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 12000) {
+      return { ok: false, text: "Invalid artifact byte range." };
+    }
+    const end = Math.min(bytes.length, offset + maxBytes);
+    const contentBase64 = bytes.subarray(offset, end).toString("base64");
+    return { ok: true, text: `Artifact ${artifact.id} (${artifact.name}), bytes ${offset}-${end} exclusive, base64:\n${contentBase64}`,
+      structured: { ...result.recoveryMetadata, resultId: result.id, artifactId: artifact.id, sha256: artifact.sha256,
+        byteSize: bytes.length, byteOffset: offset, nextByteOffset: end < bytes.length ? end : undefined,
+        encoding: "base64", contentBase64 } };
+  }
   const page = formatLuraphResultRange(result.source, input.startLine, input.maxLines);
   const { text: pageText, ...pageMetadata } = page;
   const text = [
     `Luraph result ${result.id} (${result.outputFile})`,
+    result.recoveryMetadata?.recoveryStatus === "partial" ? "PARTIAL RECOVERY: source may be intermediate or incomplete." : "",
     page.nextStartLine
       ? `Continue with operation=read, resultId=${result.id}, startLine=${page.nextStartLine}.`
       : "End of recovered source.",
@@ -200,6 +228,8 @@ export function readCachedLuraphResult(input: {
     ok: true,
     text,
     structured: {
+      ...result.recoveryMetadata,
+      artifacts,
       resultId: result.id,
       sourceKind: result.sourceKind,
       scriptPath: result.scriptPath,
@@ -251,40 +281,73 @@ async function devirtualizeLuraphSource(options: {
       timeoutSeconds: options.timeoutSeconds,
       maxResultChars: MAX_WORKER_RESULT_CHARS,
     });
+    let retainedSource = result.source!;
+    let sourceTruncated = result.sourceTruncated === true;
+    const primary = result.artifacts?.find(a => a.name === result.outputFile);
+    if (primary) {
+      try {
+        retainedSource = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.from(primary.contentBase64, "base64"));
+        sourceTruncated = false;
+      } catch { /* Exact binary bytes remain available through artifact reads. */ }
+    }
+    const recoveryMetadata = {
+      recoveryStatus: result.recoveryStatus ?? "unverified",
+      inputSha256: result.inputSha256,
+      engineExitCode: result.engineExitCode,
+      diagnostics: result.diagnostics ?? [],
+      validation: result.validation ?? { semanticEquivalence: "not-tested", liveRoblox: "not-tested" },
+      omittedArtifacts: result.omittedArtifacts ?? [],
+    };
     const resultId = retainLuraphResult({
+      recoveryMetadata,
+      artifacts: result.artifacts,
       clientId: options.clientId,
       sourceKind: options.sourceKind,
       scriptPath: options.sourceLabel,
       outputFile: result.outputFile!,
-      source: result.source!,
-      sourceTruncated: result.sourceTruncated === true,
+      source: retainedSource,
+      sourceTruncated,
     });
-    const preview = formatLuraphResultRange(result.source!, 1, options.previewLines);
+    const preview = formatLuraphResultRange(retainedSource, 1, options.previewLines);
     const quality = result.quality && typeof result.quality === "object" && !Array.isArray(result.quality)
       ? result.quality
       : {};
     const structured = {
+      schemaVersion: result.schemaVersion ?? 1,
+      recoveryStatus: result.recoveryStatus ?? "unverified",
+      engineExitCode: result.engineExitCode,
+      diagnostics: result.diagnostics ?? [],
+      validation: result.validation ?? { semanticEquivalence: "not-tested", liveRoblox: "not-tested" },
+      inputSha256: result.inputSha256,
+      artifacts: (result.artifacts ?? []).map(({ contentBase64, ...metadata }) => metadata),
+      omittedArtifacts: result.omittedArtifacts ?? [],
+      qualityEvidence: result.qualityEvidence ?? [],
+      qualityNotice: result.qualityNotice,
       resultId,
       sourceKind: options.sourceKind,
       scriptPath: options.sourceLabel,
       ...(options.debugId ? { debugId: options.debugId } : {}),
       captureMode: options.captureMode,
       outputFile: result.outputFile,
-      sourceChars: result.sourceChars ?? result.source!.length,
-      sourceLines: countLines(result.source!),
-      sourceTruncated: result.sourceTruncated === true,
+      sourceChars: sourceTruncated ? (result.sourceChars ?? retainedSource.length) : retainedSource.length,
+      sourceLines: countLines(retainedSource),
+      sourceTruncated,
       quality,
       durationMs: result.durationMs,
       nextStartLine: preview.nextStartLine,
     };
     const text = [
-      `Luraph devirtualization completed for ${options.sourceLabel}.`,
+      `Luraph worker finished for ${options.sourceLabel}; semantic equivalence is unverified.`,
+      result.recoveryStatus === "partial" ? "PARTIAL RECOVERY: the engine or a reported stage failed. Retained source may be intermediate or incomplete." : "",
       `Source kind: ${options.sourceKind}.`,
       `Result ID: ${resultId} (cached for 10 minutes; use operation=read to page it).`,
       `Recovered artifact: ${result.outputFile}`,
       `Capture mode: ${options.captureMode}`,
       qualityLine(quality),
-      result.sourceTruncated
+      result.qualityNotice ?? "Compilation and instruction coverage do not establish semantic equivalence.",
+      result.artifacts?.length ? `${result.artifacts.length} complete artifacts retained; use operation=read with artifactId for base64 byte pages.` : "",
+      result.omittedArtifacts?.length ? `${result.omittedArtifacts.length} artifact omission records; inspect omittedArtifacts.` : "",
+      sourceTruncated
         ? `The worker limited this artifact to ${MAX_WORKER_RESULT_CHARS} characters.`
         : "",
       preview.nextStartLine
@@ -428,6 +491,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
       } else {
         result = input.operation === "read"
           ? readCachedLuraphResult({
+              artifactId: input.artifactId, byteOffset: input.byteOffset, maxBytes: input.maxBytes,
               resultId: input.resultId,
               startLine: input.startLine,
               maxLines: input.maxLines,
@@ -438,6 +502,7 @@ export default function register(server: McpServer, routing: ToolRoutingContext)
           if (target) {
             result = input.operation === "read"
               ? readCachedLuraphResult({
+                  artifactId: input.artifactId, byteOffset: input.byteOffset, maxBytes: input.maxBytes,
                   clientId: target.clientId,
                   resultId: input.resultId,
                   startLine: input.startLine,

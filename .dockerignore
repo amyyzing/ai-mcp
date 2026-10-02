@@ -10,7 +10,11 @@ node_modules
 dist
 research
 benchmarks
-tests
+tests/*
+!tests/code-intelligence*.test.mjs
 services/luraph-worker/__pycache__
 *.log
 *.py[cod]
+.build-tools
+native/windows-capture/target
+companions/android/app/build

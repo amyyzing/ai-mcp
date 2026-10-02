@@ -11,10 +11,14 @@ local function Descriptor(id, available, provider, quality, limits, reason)
         id = id,
         available = available == true,
         provider = provider,
-        quality = available and (quality or "best-effort") or "degraded",
+        quality = available and "best-effort" or "degraded",
         testedAtUnixMs = TimestampMillis(),
         limits = limits,
-        degradedReason = available and nil or (reason or "API is not exposed by this executor."),
+        degradedReason = if available then nil else (reason or "API is not exposed by this executor."),
+        detected = available == true,
+        evidence = "presence-only",
+        probeExecuted = false,
+        behaviorVerified = false,
     }
 end
 
@@ -43,15 +47,29 @@ function CapabilityRegistry.new(options)
         connectorVersion = tostring(options.ConnectorVersion or "1"),
         RequestAvailable = options.RequestAvailable == true,
         HttpRequestProvider = tostring(options.HttpRequestProvider or "unavailable"),
+        HttpRequestStatus = options.HttpRequestStatus,
         WebSocketAvailable = options.WebSocketAvailable == true,
+        usage = {},
     }, CapabilityRegistry)
+end
+
+function CapabilityRegistry:RecordUse(id, provider, success, observed)
+    local previous = self.usage[id] or {}
+    self.usage[id] = {
+        provider = provider, probeExecuted = true, behaviorVerified = observed == true,
+        evidence = if observed then "observed-effect" elseif success then "dispatch-returned" else "dispatch-failed",
+        lastAttemptAtUnixMs = TimestampMillis(),
+        lastSuccessfulUseAtUnixMs = if success then TimestampMillis() else previous.lastSuccessfulUseAtUnixMs,
+        currentFailure = if success then nil else "Provider invocation failed.",
+    }
 end
 
 function CapabilityRegistry:Probe()
     local debugLibrary = type(debug) == "table" and debug or {}
+    local httpStatus = self.HttpRequestStatus and self.HttpRequestStatus() or nil
     local descriptors = {
-        Descriptor("transport.request", self.RequestAvailable, self.HttpRequestProvider, "exact"),
-        Descriptor("transport.websocket", self.WebSocketAvailable, "executor-api", "exact"),
+        Descriptor("transport.request", self.RequestAvailable, httpStatus and httpStatus.provider or self.HttpRequestProvider, "best-effort"),
+        Descriptor("transport.websocket", self.WebSocketAvailable, "executor-api", "best-effort"),
         Descriptor("script.loadstring", IsFunction(loadstring), "executor-api", "exact"),
         Descriptor("script.decompile", IsFunction(decompile), "executor-api", "best-effort"),
         Descriptor("script.bytecode", IsFunction(getscriptbytecode), "executor-api", "best-effort"),
@@ -97,6 +115,13 @@ function CapabilityRegistry:Probe()
     local byCategory = {}
     local available = 0
     for _, descriptor in descriptors do
+        local use = self.usage[descriptor.id]
+        if use then for key, value in pairs(use) do descriptor[key] = value end end
+        if descriptor.id == "transport.request" and httpStatus and httpStatus.responseValidated then
+            descriptor.evidence = "validated-http-response"
+            descriptor.probeExecuted = true
+            descriptor.behaviorVerified = true
+        end
         local category = string.match(descriptor.id, "^([^.]+)") or "other"
         byCategory[category] = byCategory[category] or { available = 0, unavailable = 0 }
         if descriptor.available then
@@ -116,6 +141,8 @@ function CapabilityRegistry:Probe()
         unavailable = #descriptors - available,
         byCategory = byCategory,
         capabilities = descriptors,
+        httpTransport = httpStatus,
+        providerUses = self.usage,
     }
 end
 

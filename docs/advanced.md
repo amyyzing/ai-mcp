@@ -92,6 +92,10 @@ The connector supports two transport modes:
 
 Transport selection is automatic. The connector recognizes common executor WebSocket API names, attempts a real connection, and falls back to HTTP polling if the API is absent, broken, or unable to connect. A failed WebSocket probe is temporarily cooled down so reconnects remain responsive.
 
+WebSocket startup also requires a valid registration acknowledgment within five seconds. Missing or malformed acknowledgments close the failed socket and release its listeners before trying HTTP. Disconnecting cancels both the heartbeat loop and any pending reachability probe. Unknown connector commands return an explicit reload/unsupported error instead of silently waiting for a timeout.
+
+HTTP API selection can try another available executor API when the bridge's read-only reachability probe throws or returns a malformed response. Diagnostics report the selected provider and validation/failure counters. Valid HTTP errors (including authentication failures) are returned unchanged. Polling and execution requests are not automatically replayed through another API: a request may already have taken effect before its response was lost. Verify its outcome before retrying. This fallback does not make missing executor APIs available or guarantee recovery from a native API that hangs.
+
 ## Archive Updates
 
 Git checkouts update from their configured tracking remote. Packaged installs

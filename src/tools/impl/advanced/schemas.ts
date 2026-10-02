@@ -180,11 +180,13 @@ export const unifiedInputSchema = z.discriminatedUnion("action", [
     text: z.string().max(2000),
     target: instanceTargetSchema.optional().describe("Optional TextBox to focus before sending text."),
     submit: z.boolean().optional().default(false),
+    allowPropertyFallback: z.boolean().optional().default(false).describe("Allow direct Text property assignment if simulated typing fails; reported separately."),
   }),
   z.object({
     action: z.literal("mouse"),
     ...inputBase,
     event: z.enum(["move", "click", "down", "up"]),
+    relative: z.boolean().optional().default(false).describe("Relative delta for movement only."),
     button: z.enum(["left", "right", "middle"]).optional().default("left"),
     x: z.number().finite().optional(),
     y: z.number().finite().optional(),

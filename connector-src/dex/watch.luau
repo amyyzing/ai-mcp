@@ -97,6 +97,7 @@ function Watch.new(options)
         Clock = clock,
         registryId = registryId,
         Measure = options.Measure,
+        EventSink = options.EventSink,
         maxWatchers = Integer(options.MaxWatchers, 8, 1, 8),
         watchers = {},
         finished = {},
@@ -155,6 +156,7 @@ end
 function Watch:_finish(watcher, reason)
     if not watcher.active then return end
     watcher.active = false
+    if self.EventSink then pcall(self.EventSink, "dex-watch-finished", { watcherId = watcher.id, reason = reason, droppedEvents = watcher.droppedEvents, latestCursor = watcher.latestCursor }) end
     for _, connection in ipairs(watcher.connections) do
         pcall(function() connection:Disconnect() end)
     end
@@ -196,6 +198,7 @@ function Watch:_push(watcher, event)
     watcher.latestCursor += 1
     event.cursor = watcher.latestCursor
     event.observedAt = self.Clock()
+    if self.EventSink then pcall(self.EventSink, "dex-watch-event", { watcherId = watcher.id, event = event }) end
     local index
     if watcher.count < watcher.capacity then
         index = ((watcher.head + watcher.count - 1) % watcher.capacity) + 1

@@ -137,10 +137,10 @@ function createMessageReader(stream) {
   };
 }
 
-function launchAdapter(environment, serverName, extraArgs = []) {
+function launchAdapter(environment, serverName, extraArgs = [], nodeArgs = []) {
   const adapter = spawn(
     process.execPath,
-    [adapterEntry, "--server-name", serverName, ...extraArgs],
+    [...nodeArgs, adapterEntry, "--server-name", serverName, ...extraArgs],
     {
       cwd: repoRoot,
       env: environment,
@@ -594,6 +594,61 @@ test("adapter reports an ambiguous interrupted request without replaying it", as
   assert.equal(tools.id, 3);
   assert.ok(tools.result.tools.some((tool) => tool.name === "list-clients"));
   assert.ok(tools.result.tools.some((tool) => tool.name === "execute"));
+});
+
+test("a replacement handshake ignores old transport errors and queues arriving requests", async (t) => {
+  const port = await availablePort();
+  const coreUrl = `http://127.0.0.1:${port}`;
+  const environment = {
+    ...process.env,
+    ROBLOX_MCP_PORT: String(port),
+    ROBLOX_MCP_CORE_URL: coreUrl,
+  };
+  const core = launchCore(environment);
+  await waitForCore(coreUrl);
+
+  const transportModule = pathToFileURL(path.join(
+    repoRoot, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm",
+    "client", "streamableHttp.js"
+  )).href;
+  const source = `
+    const { StreamableHTTPClientTransport } = await import(${JSON.stringify(transportModule)});
+    const originalSend = StreamableHTTPClientTransport.prototype.send;
+    let originalTransport;
+    StreamableHTTPClientTransport.prototype.send = async function(message, options) {
+      if (message.method === "probe/interrupted") {
+        originalTransport = this;
+        throw new Error("Probe connection interrupted after dispatch.");
+      }
+      if (message.id === "__roblox_mcp_adapter_initialize__") {
+        // Force an old transport's late callback during the new handshake.
+        originalTransport.onerror(new Error("Late error from the original transport."));
+        // Feed another client request at this exact boundary, with no timing sleep.
+        process.stdin.emit("data", Buffer.from(JSON.stringify({
+          jsonrpc: "2.0", id: 3, method: "tools/list", params: {}
+        }) + "\\n"));
+      }
+      return originalSend.call(this, message, options);
+    };
+  `;
+  const preload = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+  const connection = launchAdapter(environment, "handshake-race-adapter", [], ["--import", preload]);
+  t.after(async () => {
+    await stopChild(connection.adapter);
+    await stopChild(core);
+  });
+  await initializeAdapter(connection);
+
+  connection.adapter.stdin.write(`${JSON.stringify({
+    jsonrpc: "2.0", id: 2, method: "probe/interrupted", params: {},
+  })}\n`);
+  const responses = [await connection.nextMessage(), await connection.nextMessage()];
+  assert.deepEqual(responses.map((message) => message.id).sort(), [2, 3]);
+  const interrupted = responses.find((message) => message.id === 2);
+  assert.equal(interrupted.error.code, -32001);
+  assert.match(interrupted.error.message, /did not retry it automatically/);
+  const queued = responses.find((message) => message.id === 3);
+  assert.ok(queued.result.tools.some((tool) => tool.name === "execute"));
 });
 
 test("a healthy adapter transparently replaces an expired idle session", async (t) => {

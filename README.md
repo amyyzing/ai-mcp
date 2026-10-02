@@ -6,6 +6,10 @@
 
 An MCP server that allows Agents to interact with a running Roblox game client — execute code, inspect scripts, spy on remotes, and more.
 
+For fewer tool calls and smaller responses, see [Efficient tool calling](docs/efficient-tool-calling.md): connection diagnostics, read-only batches, cached result paging, and an optional five-tool compact profile. Existing direct tools remain supported.
+
+See [MCP improvements and follow-up findings](docs/mcp-improvements.md) for the latest connector reliability work and the next practical improvements.
+
 ## Contributors
 
 - amyyzing
@@ -24,12 +28,14 @@ Use it to see connected Roblox clients, inspect scripts, run tools, view server 
 
 ## Features
 
+- **Observations, Cursor Actions & Recordings** — Shared observation IDs, GUI hit tests, outcome-aware actions, structured console cursors, WGC/device video capture, Android/Windows companions, local OCR, optional vision analysis, project-server telemetry and evidence resources. See the [observation guide and current limitations](docs/observation.md).
 - **Code Execution** — Run Lua code and fetch data from the game client.
 - **Script Inspection** — Decompile scripts and search across all sources.
 - **Controlled Script Indexing** — Start, stop, inspect, or fully resync source mapping on demand; expensive initial indexing is opt-in.
 - **Instance Search** — CSS-like selectors and hierarchy trees.
 - **Dex Inspection & UI Handoff** — Class-aware batched inspection, resumable queries, retained snapshot comparisons, incoming instance references, change watchers, and selection/reveal integration with compatible Dex. See the [Dex workflow guide](docs/dex.md).
 - **Runtime Diagnostics** — Inspect transport latency, executor capabilities, decompiler health, and live mapping state.
+- **Anti-AFK** — Enabled automatically for the executor session and preserved across bridge reconnects. `runtime-status` includes its listener state, keep-alive attempts and failures. It uses client-local VirtualUser input when the player idles; game-specific AFK rules remain separate.
 - **Runtime Object Debugger** — Keep generation-scoped handles to GC objects, closures, tables, threads, Instances, callbacks, signals, and connections; inspect or manipulate them without flattening everything into text.
 - **GC Snapshots and References** — Build reusable GC indexes, query and diff snapshots, compute statistics, and follow table/upvalue/prototype/metatable reference edges.
 - **Bounded Runtime Search & Events** — First-match GC searches plus bounded waits; console and non-selector instance journals support resumable cursors.
@@ -200,9 +206,13 @@ of those transports.
 
 Full-game script indexing is off by default to keep large experiences responsive. Use the `script-index-start` MCP tool when needed, or set `EnableInitialScriptDecompMapping = true` before loading the connector.
 
+Rebuilding or restarting the server does not replace a connector already running in Roblox. The loader skips initialization while `MCP_Loaded` or `MCP_Loading` is true. To apply connector changes, rejoin into a fresh Roblox session and run the updated connector. Do not clear those flags while the old copy is still running; that can create duplicate connector loops.
+
 Transport selection is automatic. The connector detects common executor WebSocket APIs, attempts a real connection, and falls back to HTTP polling if WebSocket is missing or broken. `DisableWebSocket` is only a troubleshooting override; normal users do not need to set it.
 
 `BridgeURL` must point to this Roblox MCP server and its `/script.luau` route. Do not set it to an executor application's agent-facing MCP endpoint: for example, Potassium's local MCP port exposes `list_clients`, `execute_script`, and `read_console`, but it does not host this connector. Potassium can execute the loader, while the loader still connects separately to this server on `16384` or to an authenticated HTTPS deployment.
+
+If Potassium's `read_console` returns no entries after a successful script execution, use this connector's `get-console-output` with the current `clientId`, a distinctive `filter`, and a small `limit`. This fallback reads Roblox's log history independently and was verified in a session where Potassium's console capture returned nothing. It requires a connected MCP connector and does not repair Potassium's separate console implementation.
 
 When `MCPAuthToken` is set, the loader automatically authenticates the initial connector download as well as its later WebSocket or HTTP requests. A failed download or compile attempt is reported through `warn` instead of being silently swallowed.
 
@@ -250,3 +260,9 @@ Have a suggestion or need help? Join the [Discord server](https://discord.gg/FJc
 ## License
 
 [MIT](LICENSE)
+
+## Optional headless code intelligence
+
+The five `code-*` tools analyze already-indexed Luau using a pinned Live LSP
+worker. Install it on the MCP host with `npm run install:lsp`.
+See [setup, coverage and limitations](docs/code-intelligence.md).

@@ -279,4 +279,5 @@ export const runtimeActorsInputSchema = z.discriminatedUnion("operation", [
     }),
 ]);
 
-export const genericRuntimeOutputSchema = z.record(z.string(), z.unknown());
+// The MCP SDK requires an object schema to validate structured tool responses.
+export const genericRuntimeOutputSchema = z.object({}).passthrough();

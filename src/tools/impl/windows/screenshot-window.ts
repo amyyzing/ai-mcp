@@ -91,7 +91,7 @@ export default function register(server: McpServer): void {
       }
 
       try {
-        return renderScreenshotResult(performScreenshot(pid, maxWidth));
+        return renderScreenshotResult(await performScreenshot(pid, maxWidth));
       } catch (err) {
         return {
           content: [
@@ -131,7 +131,9 @@ function renderScreenshotResult(result: ScreenshotResult) {
 
   if (result.imageBase64) {
     return {
+      structuredContent: { frame: result.frame },
       content: [
+        { type: "text" as const, text: JSON.stringify({ frame: result.frame }) },
         {
           type: "image" as const,
           data: result.imageBase64,

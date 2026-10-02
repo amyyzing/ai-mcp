@@ -1,220 +1,92 @@
-import { execSync } from "child_process";
-import fs from "fs";
-import os from "os";
-import path from "path";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
-export interface RobloxWindowInfo {
-  pid: number;
-  hwnd: string;
-  title: string;
+export interface RobloxWindowInfo { pid: number; hwnd: string; title: string; processStartedAt?: string }
+export interface FrameMetadata {
+  frameId: string; captureSourceId: string; capturedAtMs: number; captureStartedAtMs: number;
+  sourceWidth: number; sourceHeight: number; returnedWidth: number; returnedHeight: number;
+  crop: { x: number; y: number; width: number; height: number };
+  geometryRevision: string; cursorIncluded: boolean; status: "fresh" | "stale" | "unavailable";
+  backend: string; captureLocation: string; pid: number; hwnd: string;
+  clientOrigin: { x: number; y: number }; dpi: number;
 }
-
 export interface ScreenshotResult {
-  error?: string;
-  needsDisambiguation?: boolean;
-  windows?: RobloxWindowInfo[];
-  imageBase64?: string;
-  mimeType?: string;
+  error?: string; needsDisambiguation?: boolean; windows?: RobloxWindowInfo[];
+  imageBase64?: string; mimeType?: string; frame?: FrameMetadata;
 }
-
 export const DEFAULT_SCREENSHOT_MAX_WIDTH = 1280;
 export const DEFAULT_SCREENSHOT_JPEG_QUALITY = 70;
+export function isSupported(): boolean { return process.platform === "win32"; }
 
-export function isSupported(): boolean {
-  return process.platform === "win32";
+// Persistent asynchronous IPC; no interpolated commands or temporary frame files.
+let worker: ChildProcessWithoutNullStreams | undefined;
+let serial = 0;
+let idle: NodeJS.Timeout | undefined;
+const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+function failWorker(error: Error) {
+  const previous = worker; worker = undefined;
+  for (const job of pending.values()) { clearTimeout(job.timer); job.reject(error); }
+  pending.clear(); previous?.kill();
 }
-
-export function enumRobloxWindows(): RobloxWindowInfo[] {
-  const ps = `
-Add-Type @"
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-public class WinEnum {
-    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
-    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int maxCount);
-    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-    public static List<object[]> GetVisibleWindows() {
-        var result = new List<object[]>();
-        EnumWindows((hWnd, _) => {
-            if (!IsWindowVisible(hWnd)) return true;
-            var sb = new StringBuilder(256);
-            GetWindowText(hWnd, sb, 256);
-            string title = sb.ToString();
-            if (string.IsNullOrEmpty(title)) return true;
-            uint pid;
-            GetWindowThreadProcessId(hWnd, out pid);
-            result.Add(new object[] { pid, hWnd.ToString(), title });
-            return true;
-        }, IntPtr.Zero);
-        return result;
-    }
-}
-"@
-
-$robloxPids = @(Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-if ($robloxPids.Count -eq 0) {
-    Write-Output '[]'
-    exit
-}
-$allWindows = [WinEnum]::GetVisibleWindows()
-$found = @()
-foreach ($w in $allWindows) {
-    if ($robloxPids -contains [int]$w[0]) {
-        $found += [PSCustomObject]@{ pid=[int]$w[0]; hwnd=$w[1]; title=$w[2] }
-    }
-}
-if ($found.Count -eq 0) {
-    Write-Output '[]'
-} else {
-    $found | ConvertTo-Json -Compress
-}
-`;
-
-  const tmpFile = path.join(os.tmpdir(), `roblox_enum_${Date.now()}.ps1`);
-  try {
-    fs.writeFileSync(tmpFile, ps, "utf-8");
-    const raw = execSync(
-      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
-      { encoding: "utf-8", timeout: 15000, windowsHide: true }
-    ).trim();
-    if (!raw || raw === "" || raw === "null") return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (err) {
-    console.error("[Screenshot] enumRobloxWindows failed:", (err as Error).message);
-    return [];
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+export function closeCaptureWorker() { if (idle) clearTimeout(idle); failWorker(new Error("Capture worker closed.")); }
+function request(operation: string, args: Record<string, unknown> = {}): Promise<any> {
+  if (!isSupported()) return Promise.reject(new Error("Native capture requires a Windows device companion."));
+  if (pending.size >= 4) return Promise.reject(new Error("Capture queue is full; wait for the current frame."));
+  if (idle) clearTimeout(idle);
+  if (!worker) {
+    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+      fileURLToPath(new URL("./capture-worker.ps1", import.meta.url))], { windowsHide: true, stdio: "pipe" });
+    worker = child;
+    let bytes = 0;
+    child.stdout.on("data", (chunk) => { if (worker !== child) return; bytes += chunk.length; if (bytes > 32 * 1024 * 1024) failWorker(new Error("Capture response exceeded its limit.")); });
+    const lines = createInterface({ input: child.stdout });
+    lines.on("line", (line) => {
+      if (worker !== child) return;
+      bytes = 0;
+      try {
+        const value = JSON.parse(line); const job = pending.get(value.id);
+        if (!job) return;
+        pending.delete(value.id); clearTimeout(job.timer);
+        if (value.error) job.reject(new Error(value.error)); else job.resolve(value.result);
+        if (!pending.size) { idle = setTimeout(closeCaptureWorker, 30000); idle.unref(); }
+      } catch { failWorker(new Error("Capture worker returned malformed JSON.")); }
+    });
+    child.stderr.resume();
+    child.stdin.on("error", () => { if (worker === child) failWorker(new Error("Capture worker input closed.")); });
+    child.on("error", () => { if (worker === child) failWorker(new Error("Capture worker could not start.")); });
+    child.on("exit", () => { if (worker === child) failWorker(new Error("Capture worker exited.")); });
   }
+  return new Promise((resolve, reject) => {
+    const id = ++serial;
+    const timer = setTimeout(() => failWorker(new Error("Capture timed out; no frame was accepted.")), 15000);
+    pending.set(id, { resolve, reject, timer });
+    worker!.stdin.write(JSON.stringify({ id, operation, ...args }) + "\n");
+  });
 }
-
-function captureWindowPNG(
-  hwnd: string,
-  maxWidth: number = DEFAULT_SCREENSHOT_MAX_WIDTH,
-  jpegQuality: number = DEFAULT_SCREENSHOT_JPEG_QUALITY
-): string {
-  const outFile = path.join(os.tmpdir(), `roblox_screenshot_${Date.now()}.b64`);
-  const safeMaxWidth = Math.max(320, Math.min(Math.floor(maxWidth) || DEFAULT_SCREENSHOT_MAX_WIDTH, 3840));
-  const safeQuality = Math.max(30, Math.min(Math.floor(jpegQuality) || DEFAULT_SCREENSHOT_JPEG_QUALITY, 95));
-  const ps = `
-Add-Type -AssemblyName System.Drawing
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class WinCapture {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT { public int Left, Top, Right, Bottom; }
-
-    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hDC, uint nFlags);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
-
-$hwnd = [IntPtr]::new([long]${hwnd})
-
-if ([WinCapture]::IsIconic($hwnd)) {
-    [WinCapture]::ShowWindow($hwnd, 9) | Out-Null
-    Start-Sleep -Milliseconds 200
-}
-
-$rect = New-Object WinCapture+RECT
-[WinCapture]::GetClientRect($hwnd, [ref]$rect) | Out-Null
-$w = $rect.Right - $rect.Left
-$h = $rect.Bottom - $rect.Top
-if ($w -le 0 -or $h -le 0) {
-    Write-Error "Window has zero size"
-    exit 1
-}
-
-$bmp = New-Object System.Drawing.Bitmap($w, $h)
-$gfx = [System.Drawing.Graphics]::FromImage($bmp)
-$hdc = $gfx.GetHdc()
-[WinCapture]::PrintWindow($hwnd, $hdc, 2) | Out-Null
-$gfx.ReleaseHdc($hdc)
-$gfx.Dispose()
-
-# Downscale to keep vision-token cost low.
-$maxWidth = ${safeMaxWidth}
-$final = $bmp
-if ($w -gt $maxWidth) {
-    $ratio = $maxWidth / $w
-    $nw = [int]($w * $ratio)
-    $nh = [int]($h * $ratio)
-    $resized = New-Object System.Drawing.Bitmap($nw, $nh)
-    $rg = [System.Drawing.Graphics]::FromImage($resized)
-    $rg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $rg.DrawImage($bmp, 0, 0, $nw, $nh)
-    $rg.Dispose()
-    $bmp.Dispose()
-    $final = $resized
-}
-
-# Encode as JPEG to shrink payload vs raw PNG.
-$jpgCodec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
-$encParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
-$encParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]${safeQuality})
-
-$ms = New-Object System.IO.MemoryStream
-$final.Save($ms, $jpgCodec, $encParams)
-$final.Dispose()
-$bytes = $ms.ToArray()
-$ms.Dispose()
-$b64 = [Convert]::ToBase64String($bytes)
-[System.IO.File]::WriteAllText('${outFile.replace(/\\/g, "\\\\")}', $b64)
-Write-Output 'OK'
-`;
-
-  const tmpFile = path.join(os.tmpdir(), `roblox_capture_${Date.now()}.ps1`);
-  try {
-    fs.writeFileSync(tmpFile, ps, "utf-8");
-    execSync(
-      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
-      { encoding: "utf-8", timeout: 15000, windowsHide: true }
-    );
-
-    if (!fs.existsSync(outFile)) throw new Error("PrintWindow did not produce output file");
-    const result = fs.readFileSync(outFile, "utf-8").trim();
-    if (!result) throw new Error("PrintWindow returned empty output");
-    return result;
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-    try { fs.unlinkSync(outFile); } catch { /* ignore */ }
-  }
-}
-
-export function performScreenshot(pid?: number, maxWidth?: number): ScreenshotResult {
-  const windows = enumRobloxWindows();
-
-  if (windows.length === 0) {
-    return { error: "No visible Roblox windows found. Make sure Roblox is running and not minimized." };
-  }
-
-  let targets = windows;
-  if (pid !== undefined) {
-    targets = windows.filter((w) => w.pid === pid);
-    if (targets.length === 0) {
-      return {
-        error: `No Roblox window found for PID ${pid}. Available windows:\n` +
-          windows.map((w) => `  PID ${w.pid} — "${w.title}"`).join("\n"),
-      };
-    }
-  }
-
-  if (targets.length > 1 && pid === undefined) {
-    return {
-      needsDisambiguation: true,
-      windows: targets,
-    };
-  }
-
+process.once("exit", () => worker?.kill());
+export async function enumRobloxWindows(): Promise<RobloxWindowInfo[]> { return request("windows"); }
+export async function performScreenshot(pid?: number, maxWidth = DEFAULT_SCREENSHOT_MAX_WIDTH): Promise<ScreenshotResult> {
+  const windows = await enumRobloxWindows();
+  const targets = pid === undefined ? windows : windows.filter((window) => window.pid === pid);
+  if (!targets.length) return { error: "No matching visible Roblox window is available." };
+  if (targets.length !== 1) return { needsDisambiguation: true, windows: targets };
   const target = targets[0]!;
-  const imageBase64 = captureWindowPNG(target.hwnd, maxWidth);
-  return { imageBase64, mimeType: "image/jpeg" };
+  const started = Date.now();
+  const captured = await request("capture", { ...target, maxWidth: Math.max(320, Math.min(3840, Math.floor(maxWidth))), quality: DEFAULT_SCREENSHOT_JPEG_QUALITY });
+  const geometryRevision = [target.hwnd, target.processStartedAt, captured.width, captured.height, captured.x, captured.y, captured.dpi].join(":");
+  return { imageBase64: captured.imageBase64, mimeType: "image/jpeg", frame: {
+    frameId: randomUUID(), captureSourceId: `${target.pid}:${target.hwnd}:${target.processStartedAt}`,
+    capturedAtMs: captured.capturedAtMs, captureStartedAtMs: started,
+    sourceWidth: captured.width, sourceHeight: captured.height, returnedWidth: captured.returnedWidth, returnedHeight: captured.returnedHeight,
+    crop: { x: 0, y: 0, width: captured.width, height: captured.height }, geometryRevision,
+    cursorIncluded: false, status: "fresh", backend: "persistent-printwindow", captureLocation: "mcp-host",
+    pid: target.pid, hwnd: target.hwnd, clientOrigin: { x: captured.x, y: captured.y }, dpi: captured.dpi,
+  } };
+}
+export function imagePointToClient(frame: FrameMetadata, x: number, y: number, expectedRevision: string) {
+  if (frame.status !== "fresh" || frame.geometryRevision !== expectedRevision) throw new Error("Frame geometry is stale.");
+  if (![x, y].every(Number.isFinite) || x < 0 || y < 0 || x >= frame.returnedWidth || y >= frame.returnedHeight) throw new Error("Point is outside the returned frame.");
+  return { x: frame.crop.x + x * frame.crop.width / frame.returnedWidth, y: frame.crop.y + y * frame.crop.height / frame.returnedHeight };
 }

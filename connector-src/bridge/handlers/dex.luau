@@ -17,12 +17,21 @@ return function(context, Bridge)
     local watches = Watch.new({
         Inspector = inspector, Values = context.RuntimeValues, Measure = measure,
         NewId = function() return HttpService:GenerateGUID(false) end,
+        EventSink = function(kind, event) if context.ObservationSink then context.ObservationSink(kind, event) end end,
     })
+    context.DexInspector = inspector
     local alive = true
     local api = {
         Version = 1, ClientId = Bridge.ClientId,
+        GetStatus = function()
+            return {
+                Connected = alive and Bridge.Connected == true and Bridge.Ready == true,
+                ClientId = Bridge.ClientId, ConnectorId = context.RuntimeHandles.registryId,
+                ConnectorGeneration = context.RuntimeHandles.generation,
+            }
+        end,
         Describe = function(instance)
-            assert(alive, "Dex connection closed; reload the MCP connector.")
+            assert(alive and Bridge.Connected, "Dex connection closed; reload the MCP connector.")
             return inspector:Describe(instance)
         end,
     }
@@ -30,10 +39,11 @@ return function(context, Bridge)
 
     local function bind(name, callback)
         Bridge:BindToTypeStructured(name, function(data)
-            assert(alive, "Dex connection closed; reconnect and start a fresh query.")
+            assert(alive and Bridge.Connected, "Dex connection closed; reconnect and start a fresh query.")
             local result = callback(data)
             result.clientId = Bridge.ClientId
             result.connectorGeneration = context.RuntimeHandles.generation
+            result.connectorId = context.RuntimeHandles.registryId
             result.placeId = game.PlaceId
             result.observedAtUnixMs = DateTime.now().UnixTimestampMillis
             return result
@@ -106,6 +116,7 @@ return function(context, Bridge)
         alive = false
         watches:Destroy()
         scans:Destroy()
+        if context.DexInspector == inspector then context.DexInspector = nil end
         if getgenv().RobloxMCPDex == api then getgenv().RobloxMCPDex = nil end
     end
 end

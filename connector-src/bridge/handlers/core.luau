@@ -113,7 +113,9 @@ local LogService = context.LogService
 
     Bridge:BindToType("get-data-by-code", function(data)
         setthreadidentity(8)
-        local dataOutput = table.pack(loadstring(data.source)())
+        local chunk, loadError = loadstring(data.source)
+        assert(chunk, "Failed to compile data source: " .. tostring(loadError))
+        local dataOutput = table.pack(chunk())
 
         return dataOutput
     end)

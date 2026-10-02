@@ -221,6 +221,32 @@ equal(gui.Visibility.Limited, false)
 equal(#gui.Visibility.ClippingAncestors, 1)
 assert(#gui.Ancestors > 0)
 
+-- An ancestry walk reaching the root does not prove visibility when a required
+-- engine read failed. A known hidden ancestor still proves false visibility.
+screen._properties.Enabled = true
+frame._properties.Visible = nil
+local unknownVisibility = inspector:Inspect({ target = { handle = inspector:Describe(text).Handle } }).results[1].Visibility
+equal(unknownVisibility.EffectiveVisible, nil, "unreadable Visible must not become true")
+assert(unknownVisibility.Limited and unknownVisibility.ReadErrorCount == 1)
+equal(unknownVisibility.Errors[1].Property, "Visible")
+equal(unknownVisibility.Errors[1].AncestorIndex, 2)
+screen._properties.Enabled = false
+local knownHidden = inspector:Inspect({ target = { handle = inspector:Describe(text).Handle } }).results[1].Visibility
+equal(knownHidden.EffectiveVisible, false)
+assert(knownHidden.Limited, "known false visibility does not erase other read failures")
+frame._properties.Visible = true
+screen._properties.Enabled = nil
+local unknownLayer = inspector:Inspect({ target = { handle = inspector:Describe(text).Handle } }).results[1].Visibility
+equal(unknownLayer.EffectiveVisible, nil, "unreadable Enabled must not become true")
+equal(unknownLayer.Errors[1].Property, "Enabled")
+screen._properties.Enabled = true
+frame.IsA = function() error("class checks unavailable") end
+local unknownClass = inspector:Inspect({ target = { handle = inspector:Describe(text).Handle } }).results[1].Visibility
+equal(unknownClass.EffectiveVisible, nil, "failed ancestor class checks leave visibility unknown")
+equal(unknownClass.Errors[1].Property, "IsA")
+frame.IsA = nil
+screen._properties.Enabled = false
+
 local children = inspector:Inspect({ target = { path = "game.Workspace" }, profile = "none", includeAncestors = false, childOffset = 1, childLimit = 1 }).results[1]
 equal(children.ChildCount, 2)
 equal(children.ChildOffset, 1)
@@ -232,6 +258,19 @@ local firstPage = inspector:Inspect({ target = { path = "game.Workspace" }, prof
 equal(firstPage.NextChildOffset, 1)
 equal(firstPage.ChildrenLimited, true)
 equal(first._childrenReads, 0, "child projections must not recursively enumerate grandchildren")
+
+local failedChildInspector = Inspector.new({ InstancePath = Paths, Handles = Handles, Values = Values, Typeof = kind, Measure = measure })
+function failedChildInspector:Describe(value)
+    if value == first then error("Child description unavailable") end
+    return inspector:Describe(value)
+end
+local failedChildPage = failedChildInspector:Inspect({ target = { path = "game.Workspace" }, profile = "none", childLimit = 1 }).results[1]
+equal(failedChildPage.Children[1].ChildIndex, 1)
+assert(failedChildPage.Children[1].Error and failedChildPage.Truncated)
+equal(failedChildPage.NextChildOffset, 1, "failed descriptions must not stall child paging")
+local afterFailedChild = failedChildInspector:Inspect({ target = { path = "game.Workspace" }, profile = "none", childOffset = failedChildPage.NextChildOffset, childLimit = 1 }).results[1]
+equal(afterFailedChild.Children[1].Handle, secondDescription.Handle)
+equal(afterFailedChild.NextChildOffset, nil)
 
 local script = instance("TestScript", "LocalScript", game, { Enabled = true, RunContext = "Client", Source = "do not read me" })
 local scriptRecord = inspector:Inspect({ target = { handle = inspector:Describe(script).Handle }, includeChildren = false }).results[1]

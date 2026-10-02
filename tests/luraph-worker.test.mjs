@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { Readable } from "node:stream";
 import test from "node:test";
+import { createHash } from "node:crypto";
 
 import { requestLuraphDevirtualization } from "../dist/luraph/client.js";
 import { POST as postTool } from "../dist/http/routes/api/tool.js";
@@ -25,6 +26,74 @@ function close(server) {
     server.close((error) => error ? reject(error) : resolve())
   );
 }
+
+test("recovery artifact reads preserve bytes, paginate, and enforce client scope", () => {
+  const bytes = Buffer.from([0, 255, 13, 10, 42]);
+  const resultId = retainLuraphResult({ sourceKind: "indexed", clientId: "a",
+    scriptPath: "test", outputFile: "test.bin", source: "preview", sourceTruncated: true,
+    artifacts: [{ id: "0", name: "test.bin", byteSize: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      representation: "engine-artifact", validation: "not-independently-validated",
+      contentBase64: bytes.toString("base64") }] });
+  assert.equal(readCachedLuraphResult({resultId, clientId: "b", artifactId: "0", startLine: 1, maxLines: 1}).ok, false);
+  const page = readCachedLuraphResult({resultId, clientId: "a", artifactId: "0", byteOffset: 1, maxBytes: 2, startLine: 1, maxLines: 1});
+  assert.deepEqual(Buffer.from(page.structured.contentBase64, "base64"), bytes.subarray(1, 3));
+  assert.equal(page.structured.nextByteOffset, 3);
+  assert.equal(readCachedLuraphResult({resultId, clientId: "a", artifactId: "0", byteOffset: 99, startLine: 1, maxLines: 1}).ok, false);
+  assert.equal(releaseCachedLuraphResult("a", resultId).ok, true);
+});
+
+test("v2 worker restores complete primary source and rejects corrupt artifact hashes", async () => {
+  let corrupt = false;
+  let partial = false;
+  const source = "line one\n" + "second line\n".repeat(200);
+  const bytes = Buffer.from(source);
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on("end", () => response.end(JSON.stringify({
+      ok: true, schemaVersion: 2, inputSha256: createHash("sha256").update("input").digest("hex"),
+      outputFile: "program.decompiled.luau", source: "line one", sourceTruncated: true,
+      recoveryStatus: partial ? "partial" : "unverified", engineExitCode: partial ? 2 : 0,
+      diagnostics: partial ? [{code: "engine-nonzero-exit"}] : [],
+      artifacts: [{id: "0", name: "program.decompiled.luau",
+        byteSize: bytes.length, contentBase64: bytes.toString("base64"),
+        sha256: corrupt ? "bad" : createHash("sha256").update(bytes).digest("hex"),
+        representation: "structural-source", validation: "not-independently-validated"}],
+    })));
+  });
+  await listen(server);
+  const previousUrl = process.env.LURAPH_WORKER_URL;
+  const previousToken = process.env.LURAPH_WORKER_TOKEN;
+  process.env.LURAPH_WORKER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.LURAPH_WORKER_TOKEN = "test";
+  try {
+    const result = await devirtualizeRawLuraphSource({source: "input", sourceName: "test", captureMode: "strict", timeoutSeconds: 30, previewLines: 1});
+    assert.equal(result.ok, true);
+    assert.equal(result.structured.sourceTruncated, false);
+    const page = readCachedLuraphResult({resultId: result.structured.resultId, startLine: 150, maxLines: 1});
+    assert.match(page.text, /second line/);
+    assert.equal(result.structured.artifacts[0].contentBase64, undefined);
+    const relayedRead = await callToolRoute({type: "devirtualize-luraph", operation: "read",
+      resultId: result.structured.resultId, artifactId: "0", byteOffset: 9, maxBytes: 6});
+    assert.equal(relayedRead.body.structuredContent.contentBase64, bytes.subarray(9, 15).toString("base64"));
+    releaseCachedLuraphResult(undefined, result.structured.resultId);
+    partial = true;
+    const partialResult = await devirtualizeRawLuraphSource({source: "input", sourceName: "partial", captureMode: "strict", timeoutSeconds: 30, previewLines: 1});
+    assert.equal(partialResult.ok, true);
+    assert.match(partialResult.text, /PARTIAL RECOVERY/);
+    const partialRead = readCachedLuraphResult({resultId: partialResult.structured.resultId, startLine: 1, maxLines: 1});
+    assert.equal(partialRead.structured.recoveryStatus, "partial");
+    assert.equal(partialRead.structured.engineExitCode, 2);
+    assert.match(partialRead.text, /PARTIAL RECOVERY/);
+    releaseCachedLuraphResult(undefined, partialResult.structured.resultId);
+    corrupt = true;
+    await assert.rejects(requestLuraphDevirtualization({source: "input", captureMode: "strict"}), /hash verification/);
+  } finally {
+    if (previousUrl === undefined) delete process.env.LURAPH_WORKER_URL; else process.env.LURAPH_WORKER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.LURAPH_WORKER_TOKEN; else process.env.LURAPH_WORKER_TOKEN = previousToken;
+    await close(server);
+  }
+});
 
 async function callToolRoute(body) {
   const request = Readable.from([JSON.stringify(body)]);

@@ -5,6 +5,7 @@ import {
   requestToClientId,
   MAX_PENDING_BRIDGE_REQUESTS,
   SendToClient,
+  removeQueuedRequest,
 } from "../../bridge/handlers/shared/communication.js";
 import {
   describeTargetResolutionFailure,
@@ -34,6 +35,7 @@ export function WS(ws: WebSocket): void {
       ) {
         const targetRequestId = message.targetRequestId;
         if (relayRequestOrigin.get(targetRequestId) === ws) {
+          removeQueuedRequest(targetRequestId);
           relayRequestOrigin.delete(targetRequestId);
           requestToClientId.delete(targetRequestId);
         }
@@ -155,6 +157,7 @@ export function WS(ws: WebSocket): void {
     console.error(`[Primary] Relay client disconnected. Total: ${relayClients.size}`);
     for (const [id, origin] of relayRequestOrigin.entries()) {
       if (origin === ws) {
+        removeQueuedRequest(id);
         relayRequestOrigin.delete(id);
         requestToClientId.delete(id);
       }

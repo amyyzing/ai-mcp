@@ -120,8 +120,14 @@ export async function POST(
     return;
   }
 
+  const profile = req.headers["x-roblox-mcp-tool-profile"];
+  if (profile !== undefined && profile !== "full" && profile !== "compact") {
+    jsonRpcError(res, 400, "x-roblox-mcp-tool-profile must be full or compact.");
+    return;
+  }
+
   let initializedSessionId: string | null = null;
-  const server = createMcpServer(requestedServerName(req));
+  const server = createMcpServer(requestedServerName(req), profile);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: randomUUID,
     enableJsonResponse: true,

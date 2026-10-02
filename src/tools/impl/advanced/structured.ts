@@ -3,16 +3,12 @@ import {
 } from "../../../bridge/handlers/shared/communication.js";
 import type { RobloxResponse } from "../../../bridge/types.js";
 import {
-  AMBIGUOUS_CLIENT_ERROR,
-  BRIDGE_BUSY_ERROR,
-  CLIENT_QUEUE_FULL_ERROR,
-  INVALID_CLIENT_ERROR,
-  NO_CLIENT_ERROR,
-} from "../../errors.js";
-import {
   clientStampPrefix,
   describeResponse,
   formatToolText,
+  responseFailed,
+  responseText,
+  dispatchFailureResponse,
   type ToolTextResponse,
 } from "../../factory.js";
 
@@ -40,12 +36,10 @@ export async function sendAndWaitStructured(
     options.clientId,
     options.timeoutMs
   );
-  if (dispatch === null) return NO_CLIENT_ERROR;
-  if (dispatch === "INVALID_CLIENT") return INVALID_CLIENT_ERROR;
-  if (dispatch === "AMBIGUOUS_CLIENT") return AMBIGUOUS_CLIENT_ERROR;
-  if (dispatch === "CLIENT_QUEUE_FULL") return CLIENT_QUEUE_FULL_ERROR;
-  if (dispatch === "BRIDGE_BUSY") return BRIDGE_BUSY_ERROR;
-  if (response === undefined || response.error !== undefined || response.output === undefined) {
+  const dispatchFailure = dispatchFailureResponse(dispatch, options.clientId);
+  if (dispatchFailure) return dispatchFailure;
+  const output = responseText(response);
+  if (responseFailed(response) || output === undefined) {
     return {
       content: [
         {
@@ -60,13 +54,13 @@ export async function sendAndWaitStructured(
   }
 
   const prefix = options.stampClient
-    ? clientStampPrefix(response.clientId ?? options.clientId)
+    ? clientStampPrefix(response!.clientId ?? options.clientId)
     : "";
-  const content = formatToolText(prefix + response.output, {
+  const content = formatToolText(prefix + output, {
     maxOutputChars: options.maxOutputChars,
     truncationHint: options.truncationHint,
   });
-  if (!isStructuredObject(response.structured)) {
+  if (!isStructuredObject(response!.structured)) {
     return {
       content: [{ type: "text", text: content }],
       isError: true,
@@ -75,6 +69,6 @@ export async function sendAndWaitStructured(
 
   return {
     content: [{ type: "text", text: content }],
-    structuredContent: response.structured,
+    structuredContent: response!.structured,
   };
 }

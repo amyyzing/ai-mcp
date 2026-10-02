@@ -12,6 +12,30 @@ local TypedValues = require("../connector-src/runtime/typed-values")
 local GcExplorer = require("../connector-src/runtime/gc-explorer")
 local CapabilityRegistry = require("../connector-src/runtime/capabilities")
 local RegisterRuntimeHandleHandlers = require("../connector-src/bridge/handlers/runtime-handles")
+local InstallAntiAFK = require("../connector-src/runtime/anti-afk")
+
+local antiAfkGlobals, idleCallbacks, pulses = {}, {}, 0
+local idle = {}
+function idle:Connect(callback)
+    local connection = {Connected = true}
+    function connection:Disconnect() self.Connected = false end
+    table.insert(idleCallbacks, {callback = callback, connection = connection})
+    return connection
+end
+local antiAfkOptions = {Environment = antiAfkGlobals, Player = {Idled = idle}, KeepAlive = function() pulses += 1 end}
+local antiAfk = InstallAntiAFK(antiAfkOptions)
+assert(antiAfk.GetStatus().enabled and #idleCallbacks == 1)
+assert(InstallAntiAFK(antiAfkOptions) == antiAfk and #idleCallbacks == 1, "reconnects must not duplicate idle listeners")
+idleCallbacks[1].callback(120)
+assert(pulses == 1 and antiAfk.GetStatus().succeeded == 1)
+antiAfkOptions.KeepAlive = function() error("executor input unavailable") end
+assert(not antiAfk.Pulse() and antiAfk.GetStatus().failed == 1 and antiAfk.GetStatus().lastError)
+antiAfk.Destroy()
+assert(not antiAfk.Pulse() and not antiAfk.GetStatus().enabled and antiAfkGlobals.RobloxMCPAntiAFK == nil)
+local replacementAntiAfk = InstallAntiAFK(antiAfkOptions)
+antiAfk.Destroy()
+assert(antiAfkGlobals.RobloxMCPAntiAFK == replacementAntiAfk, "retired listeners must not clear a newer owner")
+replacementAntiAfk.Destroy()
 
 local state = ScriptMappingState.new()
 state.configuredWorkers = 24
@@ -232,6 +256,43 @@ assert(handles:Resolve(firstHandle) == firstObject)
 assert(handles:Register(firstObject, "table") == firstHandle, "the same object must retain one handle")
 local handleStats = handles:Stats()
 assert(handleStats.active == 1 and handleStats.byKind.table == 1)
+
+-- Executor cloneref aliases have different Lua keys but one native identity.
+local function instanceAlias(identity, debugId)
+    return { identity = identity, GetDebugId = function() return debugId end }
+end
+local aliases = HandleRegistry.new({RegistryId = "aliases", CompareInstances = function(a, b)
+    return a.identity == b.identity
+end, Clock = function() return handleClock end})
+local original, clone = instanceAlias(1, "same-debug"), instanceAlias(1, "same-debug")
+local distinct = instanceAlias(2, "same-debug")
+local canonical = aliases:Register(original, "instance")
+assert(original ~= clone and aliases:Register(clone, "instance") == canonical,
+    "native aliases must share a handle despite different Lua keys")
+local distinctHandle = aliases:Register(distinct, "instance")
+assert(distinctHandle ~= canonical, "debug ID collisions must not merge different objects")
+assert(aliases:Stats().active == 2)
+assert(aliases:Release(canonical))
+assert(aliases:Register(clone, "instance") ~= canonical, "released aliases must not resurrect a handle")
+aliases:RotateGeneration()
+assert(next(aliases.instanceBuckets) == nil, "rotation must release the native identity index")
+local unavailable = HandleRegistry.new({CompareInstances = function() error("unsupported") end})
+assert(unavailable:Register(original, "instance") ~= unavailable:Register(clone, "instance"),
+    "a failed identity capability must leave aliases separate")
+local denied = instanceAlias(1, "unused")
+denied.GetDebugId = function() error("unavailable") end
+assert(unavailable:Register(denied, "instance") == unavailable:Register(denied, "instance"),
+    "identity discovery failure must preserve ordinary handle behavior")
+local aliasClock = 0
+local limitedAliases = HandleRegistry.new({MaxHandles = 100, Clock = function() return aliasClock end})
+local evictedAlias = limitedAliases:Register(instanceAlias(0, "evicted-debug"), "instance")
+for index = 1, 100 do limitedAliases:Register(instanceAlias(index, "debug-" .. index), "instance") end
+assert(limitedAliases.entries[evictedAlias] == nil and limitedAliases.instanceBuckets["evicted-debug"] == nil,
+    "eviction must remove identity candidates")
+aliasClock = 1801
+limitedAliases:Sweep(true)
+assert(limitedAliases:Stats().active == 0 and next(limitedAliases.instanceBuckets) == nil,
+    "expiry must reclaim the identity index as well as the handles")
 
 local values = TypedValues.new({ Handles = handles, DefaultEntries = 20 })
 local cyclic = { answer = 42 }

@@ -10,6 +10,7 @@ import type {
 } from "../../types.js";
 import {
   getActiveClients,
+  getClientById,
   resolveTargetClient,
   setClientUnavailableHandler,
 } from "./registry.js";
@@ -40,6 +41,19 @@ export const relayRequestOrigin: Map<string, WebSocket> = new Map();
 let relaySocket: WebSocket | null = null;
 export const secondaryResponseResolvers: Map<string, ResponseResolver> = new Map();
 
+/** Withdraw an undelivered HTTP command before forgetting its routing identity. */
+export function removeQueuedRequest(id: string): boolean {
+  const clientId = requestToClientId.get(id);
+  const client = clientId ? getClientById(clientId) : undefined;
+  if (!client || client.transport !== "http") return false;
+  const before = client.pendingHttpCommands.length;
+  client.pendingHttpCommands = client.pendingHttpCommands.filter((command) => {
+    try { return JSON.parse(command).id !== id; }
+    catch { return true; }
+  });
+  return client.pendingHttpCommands.length < before;
+}
+
 export function rejectPendingRequestsForClient(
   clientId: string,
   reason: string
@@ -48,6 +62,7 @@ export function rejectPendingRequestsForClient(
     if (expectedClientId !== clientId) continue;
 
     const error = `Roblox client became unavailable: ${reason}.`;
+    removeQueuedRequest(id);
     const originRelay = relayRequestOrigin.get(id);
     if (originRelay?.readyState === WebSocket.OPEN) {
       try {
@@ -79,6 +94,7 @@ export function resetPrimaryState(): void {
   for (const [id, resolver] of [...httpResponseResolvers]) {
     resolver({ id, error: "Primary bridge state was reset." });
   }
+  for (const id of requestToClientId.keys()) removeQueuedRequest(id);
   requestToClientId.clear();
   relayClients.clear();
   relayRequestOrigin.clear();
@@ -145,6 +161,7 @@ export function GetResponseOfIdFromClient(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      removeQueuedRequest(id);
       resolverMap.delete(id);
       requestToClientId.delete(id);
       relayRequestOrigin.delete(id);
@@ -152,6 +169,7 @@ export function GetResponseOfIdFromClient(
     };
 
     timeout = setTimeout(() => {
+      const withdrawn = removeQueuedRequest(id);
       if (
         resolverMap === secondaryResponseResolvers &&
         relaySocket &&
@@ -171,6 +189,7 @@ export function GetResponseOfIdFromClient(
         id,
         output: undefined,
         error: `Timed out waiting for response after ${timeoutMs}ms.`,
+        delivery: withdrawn ? "not-delivered" : "unknown",
       });
     }, timeoutMs);
 
@@ -191,6 +210,9 @@ export async function WaitForResponseAfterSend(
 ): Promise<RobloxResponse> {
   const resolverMap =
     instanceRole === "secondary" ? secondaryResponseResolvers : httpResponseResolvers;
+  if (resolverMap.has(id)) {
+    return { id, error: "Duplicate pending request ID; request not sent." };
+  }
   if (resolverMap.size >= MAX_PENDING_BRIDGE_REQUESTS) {
     return {
       id,

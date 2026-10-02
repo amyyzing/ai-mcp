@@ -28,6 +28,9 @@ import {
   updateProgressJob,
 } from "../../../semantic/progress.js";
 import { readJsonBody } from "../../body.js";
+import { CODE_TOOLS, type CodeTool } from "../../../code-intelligence/session.js";
+import { runCodeAnalysis } from "../../../code-intelligence/service.js";
+import { codeAnalysisSchema } from "../../../tools/impl/code-intelligence/code-tools.js";
 import { formatToolText } from "../../../tools/factory.js";
 import { buildListScriptsResult } from "../../../tools/impl/advanced/list-scripts.js";
 import {
@@ -243,6 +246,7 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
       } else {
         result = parsed.data.operation === "read"
           ? readCachedLuraphResult({
+              artifactId: parsed.data.artifactId, byteOffset: parsed.data.byteOffset, maxBytes: parsed.data.maxBytes,
               resultId: parsed.data.resultId,
               startLine: parsed.data.startLine,
               maxLines: parsed.data.maxLines,
@@ -253,6 +257,7 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
           if (target) {
             result = parsed.data.operation === "read"
               ? readCachedLuraphResult({
+                  artifactId: parsed.data.artifactId, byteOffset: parsed.data.byteOffset, maxBytes: parsed.data.maxBytes,
                   clientId: target.clientId,
                   resultId: parsed.data.resultId,
                   startLine: parsed.data.startLine,
@@ -280,6 +285,13 @@ export async function POST(req: IncomingMessage, res: ServerResponse): Promise<v
     const jsonClientOk = (data: Record<string, unknown>): void => {
       jsonOk(res, { ...data, clientId: target.clientId });
     };
+
+    if (CODE_TOOLS.includes(type as CodeTool)) {
+      const parsed = codeAnalysisSchema.safeParse({ ...params, clientId });
+      if (!parsed.success) return jsonErr(res, parsed.error.issues[0]?.message ?? "Invalid code-analysis request.");
+      const result = await runCodeAnalysis(type as CodeTool, target, parsed.data);
+      return jsonClientOk({ result: JSON.stringify(result), structuredContent: result, isError: !result.ok });
+    }
 
     // ── Script Grep (server-side search) ──────────────────────────────────────
     if (type === "list-scripts") {

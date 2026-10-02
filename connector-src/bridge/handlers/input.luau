@@ -30,6 +30,7 @@ local VirtualInputManager = context.VirtualInputManager
                     local char = text:sub(i, i):upper()
                     local byte = char:byte()
                     if byte then
+                        assert(context.IsInputFocused and context.IsInputFocused() == true, "Client-local typing unavailable; desktop fallback is disabled in the background.")
                         keypress(byte)
                         task.wait(0.01)
                         if type(keyrelease) == "function" then
@@ -44,7 +45,7 @@ local VirtualInputManager = context.VirtualInputManager
 
         if enter then
             if useKeyPress then
-                if type(keypress) == "function" then
+                if type(keypress) == "function" and context.IsInputFocused and context.IsInputFocused() == true then
                     keypress(0x0D)
                     task.wait(0.01)
                     if type(keyrelease) == "function" then

@@ -8,6 +8,23 @@ import { pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
+async function waitForWorkerExit(pid) {
+  assert.ok(Number.isInteger(pid) && pid > 0, "Expected the spawned update worker PID.");
+  const deadline = Date.now() + 10_000;
+  while (true) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return;
+      throw error;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Update worker ${pid} did not exit before fixture cleanup.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 function responseCapture() {
   const capture = { status: 0, body: "" };
   return {
@@ -103,6 +120,7 @@ test("update status recovers an orphaned active operation", async (t) => {
 test("the packed update endpoint enables archive-backed updates without Git metadata", async (t) => {
   const destination = await fs.mkdtemp(path.join(os.tmpdir(), "roblox-mcp-pack-"));
   const updateHome = await fs.mkdtemp(path.join(os.tmpdir(), "roblox-mcp-pack-home-"));
+  let workerPid;
   const previousHome = process.env.HOME;
   const previousUserProfile = process.env.USERPROFILE;
   const previousArchiveUrl = process.env.ROBLOX_MCP_UPDATE_ARCHIVE_URL;
@@ -116,6 +134,9 @@ test("the packed update endpoint enables archive-backed updates without Git meta
     else process.env.USERPROFILE = previousUserProfile;
     if (previousArchiveUrl === undefined) delete process.env.ROBLOX_MCP_UPDATE_ARCHIVE_URL;
     else process.env.ROBLOX_MCP_UPDATE_ARCHIVE_URL = previousArchiveUrl;
+    // Terminal status precedes the worker's finally block and process exit.
+    // Windows keeps its package cwd locked until that process has exited.
+    if (workerPid !== undefined) await waitForWorkerExit(workerPid);
     await fs.rm(destination, { recursive: true, force: true });
     await fs.rm(updateHome, { recursive: true, force: true });
   });
@@ -172,8 +193,10 @@ test("the packed update endpoint enables archive-backed updates without Git meta
   const postCapture = responseCapture();
   await route.POST({}, postCapture.response);
   const postBody = JSON.parse(postCapture.capture.body);
+  workerPid = postBody.workerPid;
   assert.equal(postCapture.capture.status, 202);
   assert.equal(postBody.source, "archive");
+  assert.ok(Number.isInteger(workerPid) && workerPid > 0);
 
   const statusPath = path.join(updateHome, ".roblox-mcp", "update-status.json");
   let finalStatus = null;

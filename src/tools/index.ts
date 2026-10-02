@@ -32,8 +32,13 @@ import registerListScripts from "./impl/advanced/list-scripts.js";
 import registerDevirtualizeLuraph from "./impl/advanced/devirtualize-luraph.js";
 import registerRuntimeTools from "./impl/runtime/runtime-tools.js";
 import registerDexTools from "./impl/dex/dex-tools.js";
+import registerObservationTools from "./impl/observation/observation-tools.js";
+import registerCodeTools from "./impl/code-intelligence/code-tools.js";
+import { createWorkflowLayer } from "./workflow.js";
 
-export function registerAllTools(server: McpServer, routing: ToolRoutingContext): void {
+export function registerAllTools(server: McpServer, routing: ToolRoutingContext, profile: "full" | "compact" = "full"): void {
+  const workflow = createWorkflowLayer(server, routing, profile);
+  server = workflow.server;
   registerSetActiveClient(server, routing);
 
   registerListClients(server, routing);
@@ -62,10 +67,13 @@ export function registerAllTools(server: McpServer, routing: ToolRoutingContext)
   registerDevirtualizeLuraph(server, routing);
   registerRuntimeTools(server, routing);
   registerDexTools(server, routing);
+  registerObservationTools(server, routing);
+  registerCodeTools(server, routing);
 
   registerTypeTextBox(server, routing);
   registerClickButton(server, routing);
 
   registerScreenshotWindow(server);
   registerListRobloxWindows(server);
+  workflow.install();
 }

@@ -82,7 +82,7 @@ export default function register(server: McpServer): void {
         };
       }
 
-      const wins = enumRobloxWindows();
+      const wins = await enumRobloxWindows();
       if (wins.length === 0) {
         return {
           content: [{ type: "text" as const, text: "No visible Roblox windows found." }],

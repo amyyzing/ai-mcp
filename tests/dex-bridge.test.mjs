@@ -48,10 +48,18 @@ local Watch = {new = function(options)
   return {Start = function() return {} end, Poll = function() return {} end, Stop = function() return {} end, Destroy = function() destroyed += 1 end}
 end}
 local register = (function() ${handler} end)()
-local bridge = {ClientId = "client-a", Connected = true, BindToTypeStructured = function(_, name, callback) callbacks[name] = callback end}
-local cleanup = register({RuntimeHandles = {generation = 7}, RuntimeValues = {}}, bridge)
+local bridge = {ClientId = "client-a", Connected = true, Ready = true, BindToTypeStructured = function(_, name, callback) callbacks[name] = callback end}
+local handles = {generation = 7, registryId = "registry-a"}
+local cleanup = register({RuntimeHandles = handles, RuntimeValues = {}}, bridge)
 local api = globals.RobloxMCPDex
 assert(api.Version == 1 and api.ClientId == "client-a")
+assert(api.GetStatus().Connected and api.GetStatus().ConnectorId == "registry-a" and api.GetStatus().ConnectorGeneration == 7)
+handles.generation = 8
+assert(api.GetStatus().ConnectorGeneration == 8, "generation status must follow explicit handle rotation")
+handles.generation = 7
+bridge.Connected = false
+assert(not api.GetStatus().Connected and not pcall(api.Describe, {}))
+bridge.Connected = true
 assert(not pcall(callbacks["dex-selection"], {}))
 local selected = {}
 for index = 1, 100 do selected[index] = {Handle = "rh_test_" .. index} end
@@ -64,7 +72,7 @@ globals.DexMCP = {
 local first = callbacks["dex-selection"]({limit = 25})
 assert(#first.results == 25 and first.nextOffset == 25)
 assert(first.selectionCount == 105 and first.availableSelectionCount == 100 and first.selectionTruncated)
-assert(first.clientId == "client-a" and first.connectorGeneration == 7 and first.placeId == 42 and first.observedAtUnixMs == 123456)
+assert(first.clientId == "client-a" and first.connectorId == "registry-a" and first.connectorGeneration == 7 and first.placeId == 42 and first.observedAtUnixMs == 123456)
 local last = callbacks["dex-selection"]({offset = 95, limit = 25})
 assert(#last.results == 5 and last.nextOffset == nil and last.selectionTruncated)
 selected[1]._size = 5000
@@ -138,6 +146,12 @@ local Bridge = {Connected = true, AliveThread = {}, PollThread = {},
   WebSocket = {Close = function() closed = true end},
   WaitForDisconnect = function() waited = true end,
 }
+function Bridge:Disconnect()
+  self.Connected = false
+  task.cancel(self.AliveThread)
+  task.cancel(self.PollThread)
+  self.WebSocket:Close()
+end
 local context, ScriptMappingPipeline = {}, {bridge = Bridge}
 local registrars = {
   function() return function() cleaned += 1 end end,

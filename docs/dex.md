@@ -21,6 +21,10 @@ The connector includes seven Dex tools. Inspection, scans, references, snapshots
 5. To compare states, start two queries with `retainSnapshot: true` and identical root/filter/projection/depth settings. Finish both scans before requesting a diff. Release snapshots when done.
 6. For a small set of changing objects, start a watch, retain its `watcherId`, and poll using the last `nextCursor`. Stop it after observing the interaction. Reconnects invalidate watch IDs, cursors and snapshots.
 
+Dex results include `clientId`, `connectorId` (the handle registry identity), and `connectorGeneration`. The updated explorer's copied JSON uses `ClientId`, `ConnectorId`, and `ConnectorGeneration`. Check these when sharing a selection between chats or connector loads. The registry identity distinguishes separate connector loads even when both start at generation 1; transport reconnects preserve the registry. Copying rejects disconnected connectors and registry/generation changes during the operation, while preserving compatibility with older version-1 bridges.
+
+Executor `cloneref` wrappers can have different Lua identities for the same native Instance. The registry narrows candidates by debug ID and confirms identity with Lua equality or a protected `compareinstances` call before reusing a handle. Debug IDs alone never merge objects. Incoming-reference scans use that same native comparison. If the required identity capabilities are unavailable or fail, aliases remain separate.
+
 Example GUI query arguments:
 
 ```json
@@ -50,6 +54,8 @@ Use separate narrow class queries for asset references (`Image`, `SoundId`, `Ani
 - Up to eight watches, ten targets each, are supported. The default event ring is 200 records (maximum 500), with a five-minute lifetime (configurable up to one hour). Polls report dropped history and cursor gaps. Stops, expiry and disconnects release signal connections.
 - Requested output budgets range from 2,000 to 32,000 characters. Inspect at most 20 targets per call; child pages contain at most 100 objects. Follow continuation/omission fields and reduce fields or batch size when needed. Watch startup and polling both apply the character budget, reserving space for bridge metadata. Startup first compacts target descriptions to handles (`omitted: true`), then omits warnings or target rows if necessary. `targetDetailsOmitted` counts all compacted or omitted target descriptions; `targetsOmitted` counts missing target rows, and `warningsOmitted` counts missing warnings. These omissions affect only the response: all established subscriptions remain active, and the watcher ID and observation counts are preserved.
 - GUI `EffectiveVisible` checks only the local `Visible`/`Enabled` ancestry. It does not establish pixel visibility, occlusion, transparency or viewport intersection. OS screenshots run on the **primary MCP host**, not automatically on the Roblox device; a Railway Linux host cannot capture that device's Windows window.
+
+Failed child descriptions produce an error row and advance paging so later children remain reachable. Failed parent metadata reads preserve the matching scan row with `ParentError` and mark its projection incomplete. GUI visibility stays unknown when a required ancestry read fails, unless a known hidden ancestor already proves it false. Retrying the last scan cursor with a smaller output budget compacts that response without changing the cached full page or retained snapshot.
 
 ## Loading and testing
 

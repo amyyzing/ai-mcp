@@ -9,6 +9,10 @@ const dist = path.resolve(process.env.ROBLOX_MCP_DIST_DIR || path.join(root, "di
 const dest = path.join(dist, "http", "assets");
 const sharedSrc = path.join(root, "src", "shared");
 const sharedDest = path.join(dist, "shared");
+fs.mkdirSync(path.join(dist, "platform"), { recursive: true });
+fs.copyFileSync(path.join(root, "src", "platform", "capture-worker.ps1"), path.join(dist, "platform", "capture-worker.ps1"));
+const nativeCapture = path.join(root, "native", "windows-capture", "target", "release", "mcp-window-capture.exe");
+if (fs.existsSync(nativeCapture)) fs.copyFileSync(nativeCapture, path.join(dist, "platform", "mcp-window-capture.exe"));
 
 if (!fs.existsSync(src)) {
   console.error(`[copy-assets] Source not found: ${src}`);
@@ -36,6 +40,7 @@ for (const [sourceName, destinationName] of highlightFiles) {
     path.join(highlightDest, destinationName)
   );
 }
+
 console.log(`[copy-assets] ${src} → ${dest}`);
 
 if (fs.existsSync(sharedSrc)) {
