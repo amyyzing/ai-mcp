@@ -43,6 +43,10 @@ of that. This update fixes gaps in the current command lifecycle and Dex handoff
   [Player.Idled](https://create.roblox.com/docs/reference/engine/classes/Player#Idled)
   is the trigger; VirtualUser calls are best effort and do not override a game's
   own AFK rules.
+- Respect the staged package's declared manager during automatic updates. If Bun
+  is unavailable, use npm with the committed npm lockfile instead of selecting
+  pnpm and failing Corepack's incompatible-project check. Keep explicit caller
+  package-runner overrides available.
 
 ## New findings and useful next work
 
@@ -88,7 +92,8 @@ fixtures cover connector availability and identity changes during copy.
   including disconnects and client/registry/generation changes during copy.
 
 These checks initially ran without a connected executor. The live checks below
-cover the client modules; the server changes were built locally and not deployed.
+cover client modules; the initial server fixes were then published and deployed
+as described in the release verification section.
 
 Use the rebuilt `connector.luau` with the updated Dex script. The MCP server must
 also run the rebuilt `dist` for HTTP queue withdrawal and execution messages.
@@ -120,13 +125,12 @@ different Lua identities and table keys while `compareinstances` returned true.
 This led to the native identity fixes above, with collision/error/retirement
 regressions rather than merging objects on a debug ID alone.
 
-Hosted HTTP queue withdrawal and server-side hierarchy invalidation remain
-locally tested, since the server update has not been deployed. The direct parallel
-tool-call experiment did not establish concurrent HTTP dispatch: the caller
-serialized those requests. A separate executor-origin HTTP experiment was rejected
-with HTTP 403 by the hosted dashboard route; its rejected requests establish no
-concurrency result. The scheduler/dispatcher fixture remains the concurrency
-evidence, separate from the actual HTTP inspection/readback checks.
+HTTP queue withdrawal and server-side hierarchy invalidation have regression
+coverage. The first parallel tool-call experiment was serialized by the caller.
+A separate executor-origin HTTP experiment was rejected with HTTP 403 by the
+hosted dashboard route. Neither established concurrency. After deployment, direct
+SDK calls through the authenticated MCP endpoint did confirm concurrent HTTP
+workers, as detailed below.
 
 The first harness expiry also exposed a cleanup-order error: its temporary Dex
 API was retired before the previous API was restored. The helper now restores
@@ -163,6 +167,30 @@ confirmed in a fresh live executor session, as detailed below.
   Singleton reuse, idle callback dispatch, input errors, destruction and ownership
   are covered by the connector module regressions. This is not a 20-minute idle
   kick endurance test.
+
+## Public release verification
+
+The MCP and Dex adapter changes were pushed to their public repositories. Railway
+reported successful deployments for MCP, Dex and the optional decompiler worker.
+The served connector and Dex scripts matched the pushed Git blobs byte-for-byte;
+MCP `/health` returned ready. Authenticated tool discovery returned 113 tools,
+unauthenticated agent requests were denied, connector credentials could not call
+the agent endpoint, and the public loader was verified without logging credentials.
+
+A direct authenticated SDK test sent a two-second read and a runtime-status read
+to the rebuilt temporary HTTP connector. Diagnostics returned first, in 507 ms,
+and reported two concurrent workers; the slow read finished in 2212 ms. Explicit
+cleanup preserved the original bridge. Anti-AFK was still enabled afterward,
+with seven successful keep-alive calls and zero failures.
+
+The complete MCP test run passed 239 tests with eight optional benchmark skips,
+and all eight Luau suites passed. The exact adapter-only Dex release passed its
+three tests. Unrelated local Dex changes and local gameplay probe files were
+preserved outside the release.
+
+New Railway config-file selection is deprecated. Service-specific build settings
+were applied directly: MCP uses Railpack plus pinned LSP installation/checks, while
+the decompiler worker retains its Dockerfile build. No credentials were changed.
 
 `scripts/verify-connector-live.luau` provides the temporary harness. Bundle it with
 Darklua and execute through `get-data-by-code` on an explicitly selected client.

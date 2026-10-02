@@ -26,6 +26,14 @@ function commandExists(command) {
   return spawnSync(probe, [command], { stdio: "ignore", shell: false }).status === 0;
 }
 
+export function selectUpdatePackageRunner(manifest, available = commandExists) {
+  const declared = String(manifest.packageManager || "").match(/^(bun|pnpm|npm)@/)?.[1];
+  // Corepack refuses pnpm inside a project declaring Bun. npm can install the
+  // committed package-lock when the declared manager is unavailable.
+  if (declared) return available(declared) ? declared : "npm";
+  return ["bun", "pnpm", "npm"].find(available) || "npm";
+}
+
 function updateCommandInvocation(command, args) {
   const normalized = String(command).toLowerCase().replace(/\.cmd$/, "");
   if (process.platform !== "win32" || !["npm", "pnpm"].includes(normalized)) {
@@ -158,11 +166,8 @@ export async function runStagedUpdate({
       runCommand,
     });
 
-    const runner = packageRunner || (commandExists("bun")
-      ? "bun"
-      : commandExists("pnpm")
-        ? "pnpm"
-        : "npm");
+    const manifest = JSON.parse(await fs.readFile(path.join(stagingRoot, "package.json"), "utf8"));
+    const runner = packageRunner || selectUpdatePackageRunner(manifest);
     await status("Installing the staged dependencies…", { source: source.kind });
     await runCommand(runner, ["install", "--ignore-scripts"], {
       cwd: stagingRoot,
